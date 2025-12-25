@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // --- USERS ---
+    match /users/{userId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow create: if isAuthenticated() && isOwner(userId);
+      allow update: if isAuthenticated() && isOwner(userId);
+    }
+
+    // --- PROVIDERS (Static Profile) ---
+    // Read: Public (searchable)
+    // Write: Only the provider themselves
+    match /providers/{providerId} {
+      allow read: if true;
+      allow create: if isAuthenticated(); // In real app: verify verification flow
+      allow update: if isAuthenticated() && isOwner(providerId);
+    }
+
+    // --- PROVIDER STATUS (Live Data) ---
+    // Read: Public (map view)
+    // Write: Only the provider themselves
+    match /provider_status/{providerId} {
+      allow read: if true;
+      allow update: if isAuthenticated() && isOwner(providerId)
+                    && request.resource.data.keys().hasAll(['currentLocation', 'lastSeen'])
+                    && request.resource.data.currentLocation.keys().hasAll(['lat', 'lng', 'geohash']);
+    }
+
+    // --- DEBUG / SYSTEM ---
+    match /_debug_connectivity/{document=**} {
+      allow read, write: if true; // Open for diagnostics
+    }
+  }
+}
