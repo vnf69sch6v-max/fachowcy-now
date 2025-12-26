@@ -8,7 +8,7 @@ import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { PriceMarker } from "@/components/ui/PriceMarker";
 import { Loader2 } from "lucide-react";
 import { MOCK_PROFESSIONALS } from "@/lib/mock-data";
-import { CategoryType } from "./SearchOverlay";
+import { CategoryType, PlaceLocation } from "./SearchOverlay";
 
 // Types
 interface Professional {
@@ -91,10 +91,22 @@ function MockMap({ onSelectPro, categoryFilter }: { onSelectPro?: (pro: Professi
 }
 
 // Online Map Component (Architecture 2.0: Dual Collection)
-function OnlineMap({ onSelectPro, categoryFilter }: { onSelectPro?: (pro: Professional) => void; categoryFilter?: CategoryType }) {
+function OnlineMap({ onSelectPro, categoryFilter, centerLocation }: {
+    onSelectPro?: (pro: Professional) => void;
+    categoryFilter?: CategoryType;
+    centerLocation?: PlaceLocation | null;
+}) {
     const [displayPros, setDisplayPros] = useState<Professional[]>([]);
     const [loading, setLoading] = useState(true);
     const map = useMap();
+
+    // Pan map when centerLocation changes
+    useEffect(() => {
+        if (map && centerLocation) {
+            map.panTo({ lat: centerLocation.lat, lng: centerLocation.lng });
+            map.setZoom(13);
+        }
+    }, [map, centerLocation]);
 
     // Cache static profiles to avoid refetching: { [id]: Profile }
     const profilesCache = useRef<Map<string, any>>(new Map());
@@ -223,12 +235,16 @@ function OnlineMap({ onSelectPro, categoryFilter }: { onSelectPro?: (pro: Profes
     );
 }
 
-export function MapOverview({ onSelectPro, categoryFilter }: { onSelectPro?: (pro: Professional) => void; categoryFilter?: CategoryType }) {
+export function MapOverview({ onSelectPro, categoryFilter, centerLocation }: {
+    onSelectPro?: (pro: Professional) => void;
+    categoryFilter?: CategoryType;
+    centerLocation?: PlaceLocation | null;
+}) {
     // OFFLINE MODE
     if (!API_KEY) {
         return <div className="w-full h-full relative"><MockMap onSelectPro={onSelectPro} categoryFilter={categoryFilter} /></div>;
     }
 
     // ONLINE MODE
-    return <OnlineMap onSelectPro={onSelectPro} categoryFilter={categoryFilter} />;
+    return <OnlineMap onSelectPro={onSelectPro} categoryFilter={categoryFilter} centerLocation={centerLocation} />;
 }

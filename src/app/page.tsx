@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { Loader2, LayoutDashboard, Map as MapIcon } from "lucide-react";
 import { MapProvider } from "@/components/features/MapProvider";
 import { MapOverview } from "@/components/features/MapOverview";
-import { SearchOverlay, CategoryType } from "@/components/features/SearchOverlay";
+import { SearchOverlay, CategoryType, PlaceLocation } from "@/components/features/SearchOverlay";
 import { ProCard } from "@/components/ui/ProCard";
 import { ChatWindow } from "@/components/features/ChatWindow";
 import { DashboardView } from "@/components/features/DashboardView";
@@ -34,6 +34,10 @@ export default function Home() {
   const [activeChatPro, setActiveChatPro] = useState<Professional | null>(null);
   const [view, setView] = useState<"map" | "dashboard">("map");
   const [activeCategory, setActiveCategory] = useState<CategoryType>("Wszyscy");
+  const [mapCenter, setMapCenter] = useState<PlaceLocation | null>(null);
+
+  // Check if we're in online mode (Google Maps API key present)
+  const isOnline = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
 
   // Auto-login for demo speed if not logged in
   useEffect(() => {
@@ -146,6 +150,7 @@ export default function Home() {
               <MapOverview
                 onSelectPro={(pro) => setSelectedPro(pro)}
                 categoryFilter={activeCategory}
+                centerLocation={mapCenter}
               />
             </div>
 
@@ -154,6 +159,8 @@ export default function Home() {
               <SearchOverlay
                 activeCategory={activeCategory}
                 onCategoryChange={setActiveCategory}
+                onPlaceSelect={setMapCenter}
+                isOnline={isOnline}
               />
 
               {/* Bottom Card Area */}

@@ -1,30 +1,38 @@
 "use client";
 
-import { Search, SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
+import { PlacesAutocomplete } from "./PlacesAutocomplete";
 
 const CATEGORIES = ["Wszyscy", "Hydraulik", "Elektryk", "Sprzątanie", "Złota Rączka"] as const;
 export type CategoryType = typeof CATEGORIES[number];
 
+export interface PlaceLocation {
+    lat: number;
+    lng: number;
+    name: string;
+}
+
 interface SearchOverlayProps {
     activeCategory: CategoryType;
     onCategoryChange: (category: CategoryType) => void;
+    onPlaceSelect?: (location: PlaceLocation) => void;
+    isOnline?: boolean; // Only show autocomplete in online mode
 }
 
-export function SearchOverlay({ activeCategory, onCategoryChange }: SearchOverlayProps) {
+export function SearchOverlay({ activeCategory, onCategoryChange, onPlaceSelect, isOnline = false }: SearchOverlayProps) {
     return (
         <div className="absolute top-0 left-0 right-0 z-10 p-4 flex flex-col items-center gap-3 bg-gradient-to-b from-slate-900/80 to-transparent pb-12 pointer-events-none">
-            {/* Search Input */}
-            <div className="flex items-center gap-2 w-full max-w-md bg-white/10 backdrop-blur-md border border-white/20 rounded-full px-4 py-3 shadow-lg pointer-events-auto transition-all focus-within:bg-white/15 focus-within:border-white/30 hover:bg-white/15">
-                <Search className="w-5 h-5 text-slate-300" />
-                <input
-                    type="text"
+            {/* Search Input - Autocomplete only works online */}
+            {isOnline && onPlaceSelect ? (
+                <PlacesAutocomplete
+                    onPlaceSelect={onPlaceSelect}
                     placeholder="Czego szukasz? (np. Hydraulik Poznań)"
-                    className="bg-transparent border-none outline-none text-white placeholder:text-slate-400 w-full text-base font-medium"
                 />
-                <button className="p-2 -mr-2 text-white/50 hover:text-white transition-colors">
-                    <SlidersHorizontal className="w-5 h-5" />
-                </button>
-            </div>
+            ) : (
+                <div className="flex items-center gap-2 w-full max-w-md bg-white/10 backdrop-blur-md border border-white/20 rounded-full px-4 py-3 shadow-lg pointer-events-auto opacity-50 cursor-not-allowed">
+                    <span className="text-slate-400 text-sm">Wyszukiwanie dostępne w trybie online</span>
+                </div>
+            )}
 
             {/* Category Pills */}
             <div className="flex gap-2 pointer-events-auto overflow-x-auto max-w-full pb-2 mask-linear">
@@ -45,4 +53,5 @@ export function SearchOverlay({ activeCategory, onCategoryChange }: SearchOverla
         </div>
     );
 }
+
 
