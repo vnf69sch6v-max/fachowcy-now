@@ -264,6 +264,7 @@ export default function Home() {
               location: { lat: 0, lng: 0 }
             })}
             onShowLocation={(lat, lng) => setMapCenter({ lat, lng, name: 'Lokalizacja zlecenia' })}
+            isChatOpen={!!activeChatPro}
           />
         )}
         {view === "map" && userRole === 'professional' && (

@@ -154,9 +154,10 @@ function ServiceSlider() {
 interface ClientDashboardProps {
     onOpenChat?: (proId: string, proName: string, proImage: string) => void;
     onShowLocation?: (lat: number, lng: number) => void;
+    isChatOpen?: boolean;
 }
 
-export function ClientDashboard({ onOpenChat, onShowLocation }: ClientDashboardProps) {
+export function ClientDashboard({ onOpenChat, onShowLocation, isChatOpen }: ClientDashboardProps) {
     // In real app, fetch active orders from Firestore
     const hasActiveOrder = true; // Demo: always show active order
 
@@ -167,6 +168,11 @@ export function ClientDashboard({ onOpenChat, onShowLocation }: ClientDashboardP
     const handleLocationClick = () => {
         onShowLocation?.(MOCK_ACTIVE_ORDER.location.lat, MOCK_ACTIVE_ORDER.location.lng);
     };
+
+    // Don't show order card when chat is open
+    if (isChatOpen) {
+        return null;
+    }
 
     return (
         <>
