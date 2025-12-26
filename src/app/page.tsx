@@ -16,7 +16,6 @@ import { AnimatePresence } from "framer-motion";
 import { seedFachowcy } from "@/lib/seedFachowcy";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { FirebaseStatus } from "@/components/debug/FirebaseStatus";
 
 import { ProviderProfile } from "@/types/firestore";
 
@@ -254,15 +253,24 @@ export default function Home() {
       {/* Role-based Dashboard Overlays */}
       <AnimatePresence>
         {view === "map" && userRole === 'client' && (
-          <ClientDashboard onOpenChat={() => selectedPro && setActiveChatPro(selectedPro)} />
+          <ClientDashboard
+            onOpenChat={(proId, proName, proImage) => setActiveChatPro({
+              id: proId,
+              name: proName,
+              profession: '',
+              price: 0,
+              rating: 0,
+              imageUrl: proImage,
+              location: { lat: 0, lng: 0 }
+            })}
+            onShowLocation={(lat, lng) => setMapCenter({ lat, lng, name: 'Lokalizacja zlecenia' })}
+          />
         )}
         {view === "map" && userRole === 'professional' && (
           <ProDashboard />
         )}
       </AnimatePresence>
-
-      {/* Firebase Diagnostic Overlay */}
-      <FirebaseStatus />
     </div>
   );
 }
+

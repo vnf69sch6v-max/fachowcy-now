@@ -1,12 +1,12 @@
 "use client";
 
-import { useAuth } from "@/context/AuthContext";
 import { motion } from "framer-motion";
 import { Clock, MapPin, MessageCircle, Star } from "lucide-react";
 
 // Mock active order for demo
 const MOCK_ACTIVE_ORDER = {
     id: "order-demo-1",
+    providerId: "pro-demo-1",
     providerName: "Marek Kowalski",
     providerProfession: "Hydraulik",
     providerRating: 4.8,
@@ -15,6 +15,7 @@ const MOCK_ACTIVE_ORDER = {
     eta: "7 min",
     price: 150,
     unreadMessages: 2,
+    location: { lat: 52.41, lng: 16.93 },
 };
 
 const STATUS_LABELS = {
@@ -33,19 +34,27 @@ const STATUS_COLORS = {
     completed: "bg-slate-500",
 };
 
-interface ActiveOrderCardProps {
-    order: typeof MOCK_ACTIVE_ORDER;
-    onChatClick?: () => void;
+interface OrderData {
+    id: string;
+    providerId: string;
+    providerName: string;
+    providerImageUrl: string;
 }
 
-function ActiveOrderCard({ order, onChatClick }: ActiveOrderCardProps) {
+interface ActiveOrderCardProps {
+    order: typeof MOCK_ACTIVE_ORDER;
+    onChatClick?: (orderData: OrderData) => void;
+    onLocationClick?: () => void;
+}
+
+function ActiveOrderCard({ order, onChatClick, onLocationClick }: ActiveOrderCardProps) {
     return (
         <motion.div
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="fixed bottom-20 md:bottom-6 left-4 right-4 md:left-auto md:right-6 md:w-96 z-40"
+            className="fixed bottom-28 md:bottom-24 left-4 right-4 md:left-auto md:right-6 md:w-96 z-30"
         >
             <div className="bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl p-4 shadow-2xl">
                 {/* Status Bar */}
@@ -87,7 +96,12 @@ function ActiveOrderCard({ order, onChatClick }: ActiveOrderCardProps) {
                 {/* Actions */}
                 <div className="flex gap-2 mt-4">
                     <button
-                        onClick={onChatClick}
+                        onClick={() => onChatClick?.({
+                            id: order.id,
+                            providerId: order.providerId,
+                            providerName: order.providerName,
+                            providerImageUrl: order.providerImageUrl,
+                        })}
                         className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 text-blue-100 rounded-xl text-sm font-semibold transition-all"
                     >
                         <MessageCircle className="w-4 h-4" />
@@ -98,7 +112,10 @@ function ActiveOrderCard({ order, onChatClick }: ActiveOrderCardProps) {
                             </span>
                         )}
                     </button>
-                    <button className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 rounded-xl text-sm font-semibold transition-all">
+                    <button
+                        onClick={onLocationClick}
+                        className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 rounded-xl text-sm font-semibold transition-all"
+                    >
                         <MapPin className="w-4 h-4" />
                         Lokalizacja
                     </button>
@@ -118,7 +135,7 @@ const SERVICES = [
 
 function ServiceSlider() {
     return (
-        <div className="fixed bottom-20 md:bottom-6 left-0 right-0 z-40 px-4">
+        <div className="fixed bottom-28 md:bottom-24 left-0 right-0 z-30 px-4">
             <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
                 {SERVICES.map((service) => (
                     <button
@@ -134,17 +151,35 @@ function ServiceSlider() {
     );
 }
 
-export function ClientDashboard({ onOpenChat }: { onOpenChat?: () => void }) {
+interface ClientDashboardProps {
+    onOpenChat?: (proId: string, proName: string, proImage: string) => void;
+    onShowLocation?: (lat: number, lng: number) => void;
+}
+
+export function ClientDashboard({ onOpenChat, onShowLocation }: ClientDashboardProps) {
     // In real app, fetch active orders from Firestore
     const hasActiveOrder = true; // Demo: always show active order
+
+    const handleChatClick = (orderData: OrderData) => {
+        onOpenChat?.(orderData.providerId, orderData.providerName, orderData.providerImageUrl);
+    };
+
+    const handleLocationClick = () => {
+        onShowLocation?.(MOCK_ACTIVE_ORDER.location.lat, MOCK_ACTIVE_ORDER.location.lng);
+    };
 
     return (
         <>
             {hasActiveOrder ? (
-                <ActiveOrderCard order={MOCK_ACTIVE_ORDER} onChatClick={onOpenChat} />
+                <ActiveOrderCard
+                    order={MOCK_ACTIVE_ORDER}
+                    onChatClick={handleChatClick}
+                    onLocationClick={handleLocationClick}
+                />
             ) : (
                 <ServiceSlider />
             )}
         </>
     );
 }
+
