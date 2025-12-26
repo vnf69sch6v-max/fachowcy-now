@@ -6,7 +6,8 @@ import {
     orderBy,
     onSnapshot,
     serverTimestamp,
-    limit
+    limit,
+    Firestore
 } from "firebase/firestore";
 
 export interface Message {
@@ -34,7 +35,7 @@ export const ChatService = {
         }
 
         const q = query(
-            collection(db, "chats", chatId, "messages"),
+            collection(db as Firestore, "chats", chatId, "messages"),
             orderBy("createdAt", "asc"),
             limit(50)
         );
@@ -53,7 +54,7 @@ export const ChatService = {
         if (!db) return; // Mock handling needed differently if strictly offline
 
         try {
-            await addDoc(collection(db, "chats", chatId, "messages"), {
+            await addDoc(collection(db as Firestore, "chats", chatId, "messages"), {
                 text,
                 senderId: "user",
                 createdAt: serverTimestamp()
@@ -75,7 +76,7 @@ export const ChatService = {
 
         setTimeout(async () => {
             try {
-                await addDoc(collection(db, "chats", chatId, "messages"), {
+                await addDoc(collection(db as Firestore, "chats", chatId, "messages"), {
                     text: randomResponse,
                     senderId: "pro", // ID of the professional (acting as bot)
                     createdAt: serverTimestamp()
