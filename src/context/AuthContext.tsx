@@ -12,9 +12,13 @@ import {
 import { auth, db } from "@/lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 
+export type UserRole = 'client' | 'professional';
+
 interface AuthContextType {
     user: User | null;
     loading: boolean;
+    userRole: UserRole;
+    toggleRole: () => void;
     loginAsDemoSponsor: () => Promise<void>;
     loginGoogle: () => Promise<void>;
     logout: () => Promise<void>;
@@ -35,6 +39,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [isDemoConfigured, setIsDemoConfigured] = useState(true);
+    const [userRole, setUserRole] = useState<UserRole>('client');
+
+    // Toggle between client and professional role
+    const toggleRole = () => {
+        setUserRole(prev => prev === 'client' ? 'professional' : 'client');
+    };
 
     useEffect(() => {
         // Check if auth was initialized successfully in firebase.ts
@@ -113,10 +123,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, loginAsDemoSponsor, loginGoogle, logout, isDemoConfigured }}>
+        <AuthContext.Provider value={{
+            user,
+            loading,
+            userRole,
+            toggleRole,
+            loginAsDemoSponsor,
+            loginGoogle,
+            logout,
+            isDemoConfigured
+        }}>
             {children}
         </AuthContext.Provider>
     );
 }
 
 export const useAuth = () => useContext(AuthContext);
+

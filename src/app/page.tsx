@@ -9,6 +9,9 @@ import { SearchOverlay, CategoryType, PlaceLocation } from "@/components/feature
 import { ProCard } from "@/components/ui/ProCard";
 import { ChatWindow } from "@/components/features/ChatWindow";
 import { DashboardView } from "@/components/features/DashboardView";
+import { ClientDashboard } from "@/components/features/ClientDashboard";
+import { ProDashboard } from "@/components/features/ProDashboard";
+import { RoleSwitcher } from "@/components/ui/RoleSwitcher";
 import { AnimatePresence } from "framer-motion";
 import { seedFachowcy } from "@/lib/seedFachowcy";
 import { addDoc, collection } from "firebase/firestore";
@@ -29,7 +32,7 @@ interface Professional {
 }
 
 export default function Home() {
-  const { user, loginAsDemoSponsor, loginGoogle, loading, isDemoConfigured } = useAuth();
+  const { user, loginAsDemoSponsor, loginGoogle, loading, isDemoConfigured, userRole } = useAuth();
   const [selectedPro, setSelectedPro] = useState<Professional | null>(null);
   const [activeChatPro, setActiveChatPro] = useState<Professional | null>(null);
   const [view, setView] = useState<"map" | "dashboard">("map");
@@ -225,23 +228,38 @@ export default function Home() {
       </div>
 
       {/* Navigation Bar (Glassmorphism) */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-full px-6 py-3 flex items-center gap-8 shadow-2xl">
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-full px-4 md:px-6 py-3 flex items-center gap-4 md:gap-6 shadow-2xl">
+        {/* Role Switcher */}
+        <RoleSwitcher />
+
+        <div className="w-px h-8 bg-white/10" />
+
         <button
           onClick={() => setView("map")}
           className={`flex flex-col items-center gap-1 transition-colors ${view === 'map' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
         >
-          <MapIcon className="w-6 h-6" />
-          <span className="text-[10px] font-bold uppercase tracking-wider">Mapa</span>
+          <MapIcon className="w-5 h-5 md:w-6 md:h-6" />
+          <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider">Mapa</span>
         </button>
         <div className="w-px h-8 bg-white/10" />
         <button
           onClick={() => setView("dashboard")}
           className={`flex flex-col items-center gap-1 transition-colors ${view === 'dashboard' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
         >
-          <LayoutDashboard className="w-6 h-6" />
-          <span className="text-[10px] font-bold uppercase tracking-wider">Pulpit</span>
+          <LayoutDashboard className="w-5 h-5 md:w-6 md:h-6" />
+          <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider">Pulpit</span>
         </button>
       </div>
+
+      {/* Role-based Dashboard Overlays */}
+      <AnimatePresence>
+        {view === "map" && userRole === 'client' && (
+          <ClientDashboard onOpenChat={() => selectedPro && setActiveChatPro(selectedPro)} />
+        )}
+        {view === "map" && userRole === 'professional' && (
+          <ProDashboard />
+        )}
+      </AnimatePresence>
 
       {/* Firebase Diagnostic Overlay */}
       <FirebaseStatus />

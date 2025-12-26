@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Send, X } from "lucide-react";
+import { Send, X, MapPin, CheckCircle, Play, Flag, Clock } from "lucide-react";
 import { ChatService, Message } from "@/lib/chat-service";
+import { useAuth } from "@/context/AuthContext";
 
 interface ChatWindowProps {
     proId: string;
@@ -12,7 +13,56 @@ interface ChatWindowProps {
     onClose: () => void;
 }
 
+// Smart Action Buttons based on role
+function SmartActionBar({
+    userRole,
+    onAction
+}: {
+    userRole: 'client' | 'professional';
+    onAction: (action: string, label: string) => void;
+}) {
+    const clientActions = [
+        { id: "share_location", label: "📍 Wyślij lokalizację", icon: MapPin },
+        { id: "approve", label: "✅ Zatwierdź", icon: CheckCircle },
+    ];
+
+    const proActions = [
+        { id: "start_job", label: "▶️ Rozpocznij pracę", icon: Play },
+        { id: "complete_job", label: "✅ Zakończ pracę", icon: CheckCircle },
+        { id: "report_issue", label: "⚠️ Zgłoś problem", icon: Flag },
+    ];
+
+    const actions = userRole === 'client' ? clientActions : proActions;
+
+    return (
+        <div className="flex gap-2 overflow-x-auto py-2 px-1 scrollbar-hide">
+            {actions.map((action) => (
+                <button
+                    key={action.id}
+                    onClick={() => onAction(action.id, action.label)}
+                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-xs text-slate-300 font-medium transition-all"
+                >
+                    {action.label}
+                </button>
+            ))}
+        </div>
+    );
+}
+
+// System message component
+function SystemMessage({ text }: { text: string }) {
+    return (
+        <div className="flex justify-center my-3">
+            <div className="px-4 py-1.5 bg-slate-800/50 border border-white/5 rounded-full text-xs text-slate-400 flex items-center gap-2">
+                <Clock className="w-3 h-3" />
+                {text}
+            </div>
+        </div>
+    );
+}
+
 export function ChatWindow({ proId, proName, proImage, onClose }: ChatWindowProps) {
+    const { userRole } = useAuth();
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputText, setInputText] = useState("");
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -27,10 +77,13 @@ export function ChatWindow({ proId, proName, proImage, onClose }: ChatWindowProp
         return () => unsubscribe();
     }, [chatId]);
 
-    // Auto-scroll
+    // Auto-scroll on new message
     useEffect(() => {
         if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            scrollRef.current.scrollTo({
+                top: scrollRef.current.scrollHeight,
+                behavior: 'smooth'
+            });
         }
     }, [messages]);
 
@@ -43,12 +96,18 @@ export function ChatWindow({ proId, proName, proImage, onClose }: ChatWindowProp
         await ChatService.sendMessage(chatId, text);
     };
 
+    const handleAction = async (actionId: string, label: string) => {
+        // Send as system action message
+        const systemMessage = label.replace(/[📍✅▶️⚠️]/g, '').trim().toUpperCase();
+        await ChatService.sendMessage(chatId, `--- ${systemMessage} ---`, 'system');
+    };
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 50, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 50, scale: 0.9 }}
-            className="fixed bottom-4 right-4 md:bottom-8 md:right-8 w-80 md:w-96 h-[500px] bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-50"
+            className="fixed inset-4 md:inset-auto md:bottom-8 md:right-8 md:w-96 md:h-[550px] bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-50"
         >
             {/* Header */}
             <div className="p-4 border-b border-white/10 flex items-center justify-between bg-slate-800/50">
@@ -67,22 +126,28 @@ export function ChatWindow({ proId, proName, proImage, onClose }: ChatWindowProp
                         <p className="text-xs text-green-400">Dostępny teraz</p>
                     </div>
                 </div>
-                <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+                <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors p-2">
                     <X className="w-5 h-5" />
                 </button>
             </div>
 
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={scrollRef}>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3" ref={scrollRef}>
                 {messages.length === 0 && (
                     <div className="text-center text-slate-500 text-sm mt-10">
                         Rozpocznij konwersację z {proName}.<br />
-                        „Bot” postara się odpisać ;)
+                        „Bot" postara się odpisać ;)
                     </div>
                 )}
 
                 {messages.map((msg) => {
                     const isMe = msg.senderId === "user";
+                    const isSystem = msg.type === 'system';
+
+                    if (isSystem) {
+                        return <SystemMessage key={msg.id} text={msg.text} />;
+                    }
+
                     return (
                         <motion.div
                             key={msg.id}
@@ -90,8 +155,8 @@ export function ChatWindow({ proId, proName, proImage, onClose }: ChatWindowProp
                             animate={{ opacity: 1, x: 0 }}
                             className={`flex ${isMe ? "justify-end" : "justify-start"}`}
                         >
-                            <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed
-                        ${isMe
+                            <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed
+                                ${isMe
                                     ? "bg-blue-600 text-white rounded-br-none"
                                     : "bg-slate-700 text-slate-100 rounded-bl-none"
                                 }`}
@@ -103,9 +168,14 @@ export function ChatWindow({ proId, proName, proImage, onClose }: ChatWindowProp
                 })}
             </div>
 
+            {/* Smart Action Bar */}
+            <div className="px-3 border-t border-white/5">
+                <SmartActionBar userRole={userRole} onAction={handleAction} />
+            </div>
+
             {/* Input Area */}
             <form onSubmit={handleSend} className="p-3 border-t border-white/10 bg-slate-800/30">
-                <div className="flex items-center gap-2 bg-slate-950/50 rounded-full px-4 py-2 border border-white/5 focus-within:border-blue-500/50 transition-colors">
+                <div className="flex items-center gap-2 bg-slate-950/50 rounded-full px-4 py-2.5 border border-white/5 focus-within:border-blue-500/50 transition-colors">
                     <input
                         type="text"
                         value={inputText}
@@ -116,13 +186,13 @@ export function ChatWindow({ proId, proName, proImage, onClose }: ChatWindowProp
                     <button
                         type="submit"
                         disabled={!inputText.trim()}
-                        className="text-blue-500 hover:text-blue-400 disabled:opacity-50 transition-colors"
+                        className="text-blue-500 hover:text-blue-400 disabled:opacity-50 transition-colors p-1"
                     >
                         <Send className="w-4 h-4" />
                     </button>
                 </div>
             </form>
-
         </motion.div>
     );
 }
+

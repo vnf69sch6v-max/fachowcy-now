@@ -10,10 +10,13 @@ import {
     Firestore
 } from "firebase/firestore";
 
+export type MessageType = 'text' | 'system' | 'image';
+
 export interface Message {
     id: string;
     text: string;
     senderId: string; // 'user' | 'pro'
+    type?: MessageType;
     createdAt: object; // Using object to be flexible with serverTimestamp vs Date objects for demo
 }
 
@@ -50,18 +53,21 @@ export const ChatService = {
     },
 
     // Send a message from the user
-    sendMessage: async (chatId: string, text: string) => {
+    sendMessage: async (chatId: string, text: string, type: MessageType = 'text') => {
         if (!db) return; // Mock handling needed differently if strictly offline
 
         try {
             await addDoc(collection(db as Firestore, "chats", chatId, "messages"), {
                 text,
                 senderId: "user",
+                type,
                 createdAt: serverTimestamp()
             });
 
-            // Trigger bot response
-            ChatService.simulateProResponse(chatId);
+            // Only trigger bot response for text messages
+            if (type === 'text') {
+                ChatService.simulateProResponse(chatId);
+            }
         } catch (error) {
             console.error("Error sending message:", error);
         }
