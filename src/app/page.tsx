@@ -31,7 +31,7 @@ interface Professional {
 }
 
 export default function Home() {
-  const { user, loginAsDemoSponsor, loginGoogle, loading, isDemoConfigured, userRole } = useAuth();
+  const { user, loginAsDemoSponsor, loginGoogle, loading, isDemoConfigured, userRole, toggleRole } = useAuth();
   const [selectedPro, setSelectedPro] = useState<Professional | null>(null);
   const [activeChatPro, setActiveChatPro] = useState<Professional | null>(null);
   const [view, setView] = useState<"map" | "dashboard">("map");
@@ -63,12 +63,45 @@ export default function Home() {
         <div className="absolute top-0 left-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
         <div className="absolute bottom-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
 
-        <div className="z-10 text-center space-y-6 bg-slate-900/50 p-8 rounded-2xl border border-slate-800 backdrop-blur-xl">
-          <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">FachowcyNow</h1>
-          <p className="text-slate-400 max-w-md mx-auto">
-            Witaj w demo aplikacji. Kliknij poniżej, aby wejść jako inwestor i zobaczyć mapę Poznania.
+        <div className="z-10 text-center space-y-6 bg-slate-900/50 p-8 rounded-2xl border border-slate-800 backdrop-blur-xl max-w-md w-full">
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">FachowcyNow</h1>
+          <p className="text-slate-400">
+            Znajdź fachowca lub oferuj swoje usługi
           </p>
-          <div className="flex flex-col gap-3">
+
+          {/* Role Selection */}
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => {
+                toggleRole();
+                if (userRole !== 'client') toggleRole(); // ensure client
+              }}
+              className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${userRole === 'client'
+                ? 'bg-blue-500/20 border-blue-400/50 text-blue-100 shadow-[0_0_20px_rgba(59,130,246,0.3)]'
+                : 'bg-slate-800/50 border-white/10 text-slate-400 hover:bg-slate-700/50'
+                }`}
+            >
+              <span className="text-2xl">👤</span>
+              <span className="font-semibold text-sm">Jestem Klientem</span>
+              <span className="text-[10px] opacity-70">Szukam fachowca</span>
+            </button>
+            <button
+              onClick={() => {
+                toggleRole();
+                if (userRole !== 'professional') toggleRole(); // ensure professional
+              }}
+              className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${userRole === 'professional'
+                ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.3)]'
+                : 'bg-slate-800/50 border-white/10 text-slate-400 hover:bg-slate-700/50'
+                }`}
+            >
+              <span className="text-2xl">🔧</span>
+              <span className="font-semibold text-sm">Jestem Fachowcem</span>
+              <span className="text-[10px] opacity-70">Oferuję usługi</span>
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-3 pt-2">
             <button
               onClick={loginGoogle}
               className="py-3 px-8 bg-white hover:bg-slate-100 text-slate-900 rounded-xl font-bold transition-transform active:scale-95 shadow-lg flex items-center justify-center gap-2"
@@ -79,7 +112,7 @@ export default function Home() {
                 <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
               </svg>
-              Zaloguj przez Google
+              Kontynuuj jako {userRole === 'client' ? 'Klient' : 'Fachowiec'}
             </button>
 
             <div className="flex items-center gap-2 opacity-50 my-1">
@@ -94,46 +127,31 @@ export default function Home() {
             >
               Wejdź jako Gość (Demo)
             </button>
-            {/* Login Screen Extra: Seed Button */}
-            {!isDemoConfigured && (
-              <span className="text-xs text-amber-500 bg-amber-500/10 px-2 py-1 rounded text-center">Tryb Offline Aktywny</span>
-            )}
-            <button
-              onClick={async () => {
-                try {
-                  const res = await seedFachowcy();
-                  if (res.success) {
-                    alert(`Sukces! Dodano ${res.count} fachowców. Odśwież stronę.`);
-                  } else {
-                    console.error("Seed error details:", res.error);
-                    alert(`Błąd seedowania: ${typeof res.error === 'object' ? JSON.stringify(res.error) : res.error}`);
-                  }
-                } catch (e) {
-                  alert("Krytyczny błąd: " + e);
-                }
-              }}
-              className="text-xs text-slate-500 hover:text-white mt-2 underline"
-            >
-              [DEV] Załaduj dane do bazy
-            </button>
-            <button
-              onClick={async () => {
-                const { startSimulation, stopSimulation } = await import("@/lib/simulateLiveTraffic");
-                // Simple toggle logic (in real app use state)
-                // We assume if we click, we want to start, unless we want to stop. 
-                // ideally we'd track state, but for dev tool simplified:
-                const started = await startSimulation();
-                if (started) alert("Symulacja ruchu włączona (Fachowcy będą się przemieszczać).");
-                else {
-                  stopSimulation();
-                  alert("Symulacja zatrzymana.");
-                }
-              }}
-              className="text-xs text-emerald-500 hover:text-emerald-400 mt-1 underline"
-            >
-              [DEV] Symuluj Ruch (Live)
-            </button>
           </div>
+
+          {/* Dev tools - hidden by default */}
+          <details className="text-left">
+            <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-400">[DEV] Narzędzia</summary>
+            <div className="mt-2 flex flex-col gap-1">
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await seedFachowcy();
+                    if (res.success) {
+                      alert(`Sukces! Dodano ${res.count} fachowców.`);
+                    } else {
+                      alert(`Błąd: ${res.error}`);
+                    }
+                  } catch (e) {
+                    alert("Błąd: " + e);
+                  }
+                }}
+                className="text-xs text-slate-500 hover:text-white underline"
+              >
+                Załaduj dane testowe
+              </button>
+            </div>
+          </details>
         </div>
       </main>
     );

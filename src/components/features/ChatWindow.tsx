@@ -107,7 +107,7 @@ export function ChatWindow({ proId, proName, proImage, onClose }: ChatWindowProp
             initial={{ opacity: 0, y: 50, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 50, scale: 0.9 }}
-            className="fixed inset-4 md:inset-auto md:bottom-8 md:right-8 md:w-96 md:h-[550px] bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-50"
+            className="fixed inset-4 md:inset-auto md:bottom-24 md:right-8 md:w-96 md:h-[500px] bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-[100]"
         >
             {/* Header */}
             <div className="p-4 border-b border-white/10 flex items-center justify-between bg-slate-800/50">
