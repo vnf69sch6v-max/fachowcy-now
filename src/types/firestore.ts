@@ -6,6 +6,158 @@ import { Timestamp, DocumentData, FirestoreDataConverter, QueryDocumentSnapshot 
  * to avoid hotspotting a single document with frequent writes (GPS/Online status).
  */
 
+// ===========================================
+// BADGE TYPES
+// ===========================================
+
+export type BadgeType =
+    | 'VerifiedPro'     // Zweryfikowany fachowiec
+    | 'TopRated'        // Najwyżej oceniany
+    | '1YearClub'       // 1 rok z nami
+    | '2YearClub'       // 2 lata z nami
+    | 'FastResponder'   // Szybkie odpowiedzi
+    | 'TrustedPro';     // Zaufany fachowiec
+
+// ===========================================
+// USER PROFILE (users/{uid})
+// ===========================================
+
+export type UserRole = 'client' | 'professional' | 'admin';
+
+export interface ProfileStats {
+    jobsCompleted: number;
+    rating: number;           // 0.0 - 5.0
+    joinedAt: Timestamp;      // For tenure calculation
+    responseTime: number;     // Average in minutes
+}
+
+export interface UserProfile {
+    id: string;               // Auth UID
+    email: string;
+    displayName: string;
+    avatarUrl: string | null;
+
+    // Role & Permissions
+    role: UserRole;
+
+    // Stats & Trust
+    profileStats: ProfileStats;
+    badges: BadgeType[];
+
+    // Economy
+    walletBalance: number;    // Virtual currency
+
+    // Metadata
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
+}
+
+// ===========================================
+// ORDER SYSTEM (orders/{orderId})
+// ===========================================
+
+export type OrderStatus =
+    | 'pending'       // Waiting for provider
+    | 'accepted'      // Provider accepted
+    | 'en_route'      // Provider traveling
+    | 'in_progress'   // Work started
+    | 'completed'     // Work done
+    | 'cancelled';    // Cancelled by either party
+
+export type ActionRequired =
+    | 'none'
+    | 'acceptance'    // Provider needs to accept
+    | 'payment'       // Client needs to pay
+    | 'review';       // Client needs to review
+
+export interface OrderTimelineEntry {
+    status: OrderStatus | string;
+    timestamp: Timestamp;
+    description: string;
+    actorId?: string;        // Who triggered this
+}
+
+export interface Order {
+    id: string;
+
+    // Parties
+    clientId: string;
+    providerId: string;
+
+    // Status
+    status: OrderStatus;
+    actionRequired: ActionRequired;
+
+    // Service Details
+    serviceType: string;
+    description: string;
+
+    // Location
+    location: {
+        lat: number;
+        lng: number;
+        address?: string;
+    };
+
+    // Pricing
+    price: {
+        estimated: number;
+        final: number | null;
+        currency: string;
+    };
+
+    // Timeline (for progress tracking)
+    timeline: OrderTimelineEntry[];
+
+    // Chat link
+    chatId: string;
+
+    // Metadata
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
+}
+
+// ===========================================
+// CHAT SYSTEM (chats/{chatId})
+// ===========================================
+
+export type MessageType = 'text' | 'system' | 'action' | 'image' | 'payment_request';
+
+export interface ChatMeta {
+    lastMessageTime: Timestamp;
+    lastMessageText: string;
+    orderStatus: OrderStatus;
+    unreadCount: { [participantId: string]: number };
+}
+
+export interface Chat {
+    id: string;
+    orderId: string;          // Strict link to order
+    participants: string[];   // [clientId, providerId]
+    meta: ChatMeta;
+    createdAt: Timestamp;
+}
+
+export interface ChatMessage {
+    id: string;
+    senderId: string;
+    text: string;
+    type: MessageType;
+
+    // For action messages
+    actionData?: {
+        type: 'location_share' | 'payment_request' | 'status_change';
+        payload: Record<string, unknown>;
+    };
+
+    timestamp: Timestamp;
+    isRead: boolean;
+}
+
+// ===========================================
+// PROVIDER PROFILE (providers/{uid}) - Existing
+// ===========================================
+
 export interface ProviderProfile {
     id: string; // Auth UID
 
@@ -63,7 +215,9 @@ export interface ProviderStatus {
     lastSeen: Timestamp;
 }
 
-// Converters for Type-Safety SDK usage
+// ===========================================
+// CONVERTERS for Type-Safe SDK
+// ===========================================
 
 export const providerProfileConverter: FirestoreDataConverter<ProviderProfile> = {
     toFirestore(pro: ProviderProfile): DocumentData {
@@ -84,3 +238,22 @@ export const providerStatusConverter: FirestoreDataConverter<ProviderStatus> = {
         return data as ProviderStatus;
     }
 };
+
+export const orderConverter: FirestoreDataConverter<Order> = {
+    toFirestore(order: Order): DocumentData {
+        return { ...order };
+    },
+    fromFirestore(snapshot: QueryDocumentSnapshot): Order {
+        return { id: snapshot.id, ...snapshot.data() } as Order;
+    }
+};
+
+export const userProfileConverter: FirestoreDataConverter<UserProfile> = {
+    toFirestore(user: UserProfile): DocumentData {
+        return { ...user };
+    },
+    fromFirestore(snapshot: QueryDocumentSnapshot): UserProfile {
+        return { id: snapshot.id, ...snapshot.data() } as UserProfile;
+    }
+};
+
