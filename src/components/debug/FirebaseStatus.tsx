@@ -62,7 +62,8 @@ export function FirebaseStatus() {
         return () => unsubscribe();
     }, []);
 
-    // if (status.auth === "connected" && status.db === "connected") return null; // Hide if all good (or maybe show small indicator)
+    // Hide in production
+    if (process.env.NODE_ENV === "production") return null;
 
     return (
         <div className="fixed bottom-4 left-4 z-[9999] bg-slate-900 border border-slate-700 p-4 rounded-lg shadow-2xl max-w-sm">

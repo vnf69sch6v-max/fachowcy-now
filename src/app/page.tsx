@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { Loader2, LayoutDashboard, Map as MapIcon } from "lucide-react";
 import { MapProvider } from "@/components/features/MapProvider";
 import { MapOverview } from "@/components/features/MapOverview";
-import { SearchOverlay } from "@/components/features/SearchOverlay";
+import { SearchOverlay, CategoryType } from "@/components/features/SearchOverlay";
 import { ProCard } from "@/components/ui/ProCard";
 import { ChatWindow } from "@/components/features/ChatWindow";
 import { DashboardView } from "@/components/features/DashboardView";
@@ -33,6 +33,7 @@ export default function Home() {
   const [selectedPro, setSelectedPro] = useState<Professional | null>(null);
   const [activeChatPro, setActiveChatPro] = useState<Professional | null>(null);
   const [view, setView] = useState<"map" | "dashboard">("map");
+  const [activeCategory, setActiveCategory] = useState<CategoryType>("Wszyscy");
 
   // Auto-login for demo speed if not logged in
   useEffect(() => {
@@ -142,12 +143,18 @@ export default function Home() {
           <MapProvider>
             {/* Map Layer */}
             <div className="absolute inset-0 z-0">
-              <MapOverview onSelectPro={(pro) => setSelectedPro(pro)} />
+              <MapOverview
+                onSelectPro={(pro) => setSelectedPro(pro)}
+                categoryFilter={activeCategory}
+              />
             </div>
 
             {/* UI Layer */}
             <div className="relative z-10 w-full h-full pointer-events-none flex flex-col justify-between">
-              <SearchOverlay />
+              <SearchOverlay
+                activeCategory={activeCategory}
+                onCategoryChange={setActiveCategory}
+              />
 
               {/* Bottom Card Area */}
               <div className="p-4 md:p-8 flex justify-center md:justify-start md:items-end pointer-events-none mb-16 md:mb-0">

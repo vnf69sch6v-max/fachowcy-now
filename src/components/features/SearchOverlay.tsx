@@ -2,7 +2,15 @@
 
 import { Search, SlidersHorizontal } from "lucide-react";
 
-export function SearchOverlay() {
+const CATEGORIES = ["Wszyscy", "Hydraulik", "Elektryk", "Sprzątanie", "Złota Rączka"] as const;
+export type CategoryType = typeof CATEGORIES[number];
+
+interface SearchOverlayProps {
+    activeCategory: CategoryType;
+    onCategoryChange: (category: CategoryType) => void;
+}
+
+export function SearchOverlay({ activeCategory, onCategoryChange }: SearchOverlayProps) {
     return (
         <div className="absolute top-0 left-0 right-0 z-10 p-4 flex flex-col items-center gap-3 bg-gradient-to-b from-slate-900/80 to-transparent pb-12 pointer-events-none">
             {/* Search Input */}
@@ -20,11 +28,12 @@ export function SearchOverlay() {
 
             {/* Category Pills */}
             <div className="flex gap-2 pointer-events-auto overflow-x-auto max-w-full pb-2 mask-linear">
-                {["Wszyscy", "Hydraulik", "Elektryk", "Sprzątanie", "Złota Rączka"].map((cat, i) => (
+                {CATEGORIES.map((cat) => (
                     <button
                         key={cat}
+                        onClick={() => onCategoryChange(cat)}
                         className={`px-4 py-1.5 rounded-full text-xs font-semibold backdrop-blur-md transition-all duration-300 border
-                    ${i === 0
+                    ${activeCategory === cat
                                 ? 'bg-blue-500/20 border-blue-400/50 text-blue-100 shadow-[0_0_15px_rgba(59,130,246,0.5)]'
                                 : 'bg-slate-800/40 border-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200 hover:border-white/20'
                             }`}
@@ -36,3 +45,4 @@ export function SearchOverlay() {
         </div>
     );
 }
+

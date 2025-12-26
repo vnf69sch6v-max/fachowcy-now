@@ -47,8 +47,8 @@ export async function seedFachowcy(): Promise<{ success: boolean; count?: number
 
     console.log("Starting seeding with Architecture 2.0 (Dual Collections)...");
 
-    // Generate 50 professionals
-    for (let i = 0; i < 50; i++) {
+    // Generate 15 professionals (balanced across professions)
+    for (let i = 0; i < 15; i++) {
       const template = MOCK_PROFESSIONALS[i % MOCK_PROFESSIONALS.length];
       const newDocRef = doc(collection(db, "providers")); // Changed from 'professionals' to 'providers'
       const statusDocRef = doc(db, "provider_status", newDocRef.id);

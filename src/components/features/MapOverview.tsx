@@ -8,6 +8,7 @@ import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { PriceMarker } from "@/components/ui/PriceMarker";
 import { Loader2 } from "lucide-react";
 import { MOCK_PROFESSIONALS } from "@/lib/mock-data";
+import { CategoryType } from "./SearchOverlay";
 
 // Types
 interface Professional {
@@ -47,7 +48,10 @@ const MAP_STYLE = [
 ];
 
 // Offline / Mock Map Component
-function MockMap({ onSelectPro }: { onSelectPro?: (pro: Professional) => void }) {
+function MockMap({ onSelectPro, categoryFilter }: { onSelectPro?: (pro: Professional) => void; categoryFilter?: CategoryType }) {
+    const filteredPros = MOCK_PROFESSIONALS.filter(pro =>
+        !categoryFilter || categoryFilter === "Wszyscy" || pro.profession === categoryFilter
+    );
     return (
         <div className="w-full h-full bg-[#1a202c] relative overflow-hidden flex items-center justify-center">
             {/* Background Grid Pattern */}
@@ -65,7 +69,7 @@ function MockMap({ onSelectPro }: { onSelectPro?: (pro: Professional) => void })
             </div>
 
             {/* Interactive Markers */}
-            {MOCK_PROFESSIONALS.map((pro) => (
+            {filteredPros.map((pro) => (
                 <div
                     key={pro.id}
                     className="absolute z-20 transition-transform hover:scale-110"
@@ -87,7 +91,7 @@ function MockMap({ onSelectPro }: { onSelectPro?: (pro: Professional) => void })
 }
 
 // Online Map Component (Architecture 2.0: Dual Collection)
-function OnlineMap({ onSelectPro }: { onSelectPro?: (pro: Professional) => void }) {
+function OnlineMap({ onSelectPro, categoryFilter }: { onSelectPro?: (pro: Professional) => void; categoryFilter?: CategoryType }) {
     const [displayPros, setDisplayPros] = useState<Professional[]>([]);
     const [loading, setLoading] = useState(true);
     const map = useMap();
@@ -178,6 +182,11 @@ function OnlineMap({ onSelectPro }: { onSelectPro?: (pro: Professional) => void 
         clusterer.addMarkers(markers);
     }, [displayPros]);
 
+    // Filter professionals by category
+    const filteredPros = displayPros.filter(pro =>
+        !categoryFilter || categoryFilter === "Wszyscy" || pro.profession === categoryFilter
+    );
+
     return (
         <div className="w-full h-full relative bg-slate-900">
             <GoogleMap
@@ -189,7 +198,7 @@ function OnlineMap({ onSelectPro }: { onSelectPro?: (pro: Professional) => void 
                 styles={MAP_STYLE}
                 className="w-full h-full outline-none"
             >
-                {displayPros.map(pro => (
+                {filteredPros.map(pro => (
                     <PriceMarker
                         key={pro.id}
                         position={pro.location}
@@ -214,12 +223,12 @@ function OnlineMap({ onSelectPro }: { onSelectPro?: (pro: Professional) => void 
     );
 }
 
-export function MapOverview({ onSelectPro }: { onSelectPro?: (pro: Professional) => void }) {
+export function MapOverview({ onSelectPro, categoryFilter }: { onSelectPro?: (pro: Professional) => void; categoryFilter?: CategoryType }) {
     // OFFLINE MODE
     if (!API_KEY) {
-        return <div className="w-full h-full relative"><MockMap onSelectPro={onSelectPro} /></div>;
+        return <div className="w-full h-full relative"><MockMap onSelectPro={onSelectPro} categoryFilter={categoryFilter} /></div>;
     }
 
     // ONLINE MODE
-    return <OnlineMap onSelectPro={onSelectPro} />;
+    return <OnlineMap onSelectPro={onSelectPro} categoryFilter={categoryFilter} />;
 }
