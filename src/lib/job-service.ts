@@ -313,4 +313,80 @@ export class JobService {
             return [];
         }
     }
+
+    /**
+     * Professional accepts a job - atomic transaction
+     * Updates job status, adds pro to chat, sends system message
+     */
+    static async acceptJob(
+        jobId: string,
+        professionalId: string,
+        professionalName: string
+    ): Promise<boolean> {
+        if (!db) return false;
+
+        try {
+            await runTransaction(db as Firestore, async (transaction) => {
+                const jobRef = doc(db as Firestore, 'jobs', jobId);
+                const jobSnap = await transaction.get(jobRef);
+
+                if (!jobSnap.exists()) {
+                    throw new Error('Job not found');
+                }
+
+                const jobData = jobSnap.data();
+                if (jobData.status !== 'open') {
+                    throw new Error('Job is no longer available');
+                }
+
+                const chatId = jobData.chatId;
+                const now = serverTimestamp();
+
+                // 1. Update job status
+                transaction.update(jobRef, {
+                    status: 'accepted',
+                    assignedProId: professionalId,
+                    assignedProName: professionalName,
+                    acceptedAt: now,
+                    updatedAt: now
+                });
+
+                // 2. Update chat - add professional to participants
+                if (chatId) {
+                    const chatRef = doc(db as Firestore, 'chats', chatId);
+                    transaction.update(chatRef, {
+                        professionalId,
+                        professionalName,
+                        participantIds: arrayUnion(professionalId),
+                        status: 'accepted',
+                        updatedAt: now
+                    });
+
+                    // 3. Send system message
+                    const msgRef = doc(collection(db as Firestore, `chats/${chatId}/messages`));
+                    transaction.set(msgRef, {
+                        content: `✅ ${professionalName} zaakceptował zlecenie! Możecie teraz rozmawiać.`,
+                        senderId: 'system',
+                        senderName: 'System',
+                        senderRole: 'system',
+                        type: 'system',
+                        createdAt: now
+                    });
+
+                    // Update last message
+                    transaction.update(chatRef, {
+                        lastMessage: `✅ ${professionalName} zaakceptował zlecenie!`,
+                        lastMessageAt: now,
+                        'unreadCount.client': 1
+                    });
+                }
+            });
+
+            console.log("Job accepted successfully:", jobId);
+            return true;
+        } catch (error) {
+            console.error("Error accepting job:", error);
+            return false;
+        }
+    }
 }

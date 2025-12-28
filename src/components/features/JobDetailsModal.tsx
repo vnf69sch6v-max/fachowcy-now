@@ -9,6 +9,7 @@ import {
 import { doc, collection, setDoc, updateDoc, addDoc, getDoc, serverTimestamp, increment } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
+import { JobService } from "@/lib/job-service";
 
 interface Job {
     id: string;
@@ -36,6 +37,7 @@ export function JobDetailsModal({ job, isOpen, onClose, onStartChat }: JobDetail
     const [proposalPrice, setProposalPrice] = useState(job.priceEstimate?.max || 200);
     const [proposalMessage, setProposalMessage] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isAccepting, setIsAccepting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
 
     const handleSubmitProposal = async () => {
@@ -105,6 +107,31 @@ export function JobDetailsModal({ job, isOpen, onClose, onStartChat }: JobDetail
         if (job.chatId) {
             onStartChat?.(job.chatId);
             onClose();
+        }
+    };
+
+    const handleAcceptJob = async () => {
+        if (!user || isAccepting) return;
+        setIsAccepting(true);
+
+        try {
+            const success = await JobService.acceptJob(
+                job.id,
+                user.uid,
+                user.displayName || 'Fachowiec'
+            );
+
+            if (success) {
+                setSubmitted(true);
+                setTimeout(() => onClose(), 1500);
+            } else {
+                alert('Nie udało się zaakceptować zlecenia.');
+            }
+        } catch (error) {
+            console.error('Error accepting job:', error);
+            alert('Błąd przy akceptacji zlecenia.');
+        } finally {
+            setIsAccepting(false);
         }
     };
 
@@ -222,27 +249,44 @@ export function JobDetailsModal({ job, isOpen, onClose, onStartChat }: JobDetail
 
                     {/* Actions */}
                     {!submitted && (
-                        <div className="p-5 border-t border-white/10 bg-slate-900/50 flex gap-3">
+                        <div className="p-5 border-t border-white/10 bg-slate-900/50 space-y-3">
+                            {/* Accept Job - Primary Action */}
                             <button
-                                onClick={handleStartChat}
-                                disabled={!job.chatId}
-                                className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-2 transition-colors font-medium"
+                                onClick={handleAcceptJob}
+                                disabled={isAccepting || job.status !== 'open'}
+                                className="w-full py-4 bg-gradient-to-r from-violet-500 to-indigo-500 hover:from-violet-400 hover:to-indigo-400 disabled:from-slate-700 disabled:to-slate-700 disabled:opacity-50 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-violet-500/20"
                             >
-                                <MessageCircle className="w-5 h-5" />
-                                Napisz najpierw
-                            </button>
-                            <button
-                                onClick={handleSubmitProposal}
-                                disabled={isSubmitting || !proposalMessage.trim()}
-                                className="flex-1 py-4 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 disabled:opacity-50 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20"
-                            >
-                                {isSubmitting ? (
+                                {isAccepting ? (
                                     <Loader2 className="w-5 h-5 animate-spin" />
                                 ) : (
-                                    <Send className="w-5 h-5" />
+                                    <CheckCircle className="w-5 h-5" />
                                 )}
-                                Wyślij ofertę
+                                ✅ Akceptuj zlecenie
                             </button>
+
+                            {/* Secondary Actions */}
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={handleStartChat}
+                                    disabled={!job.chatId}
+                                    className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-2 transition-colors font-medium text-sm"
+                                >
+                                    <MessageCircle className="w-4 h-4" />
+                                    Napisz
+                                </button>
+                                <button
+                                    onClick={handleSubmitProposal}
+                                    disabled={isSubmitting || !proposalMessage.trim()}
+                                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-all text-sm"
+                                >
+                                    {isSubmitting ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <Send className="w-4 h-4" />
+                                    )}
+                                    Wyślij ofertę
+                                </button>
+                            </div>
                         </div>
                     )}
                 </motion.div>
