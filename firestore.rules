@@ -133,6 +133,22 @@ service cloud.firestore {
         allow write: if false; // Only manageable via Admin SDK or backend
     }
     
+    // Providers - public profiles for professionals
+    match /providers/{providerId} {
+        allow read: if true;  // Public read for map display
+        allow create: if true;  // TEMPORARY: Allow seeding without auth
+        allow update: if request.auth != null && request.auth.uid == providerId;
+        allow delete: if request.auth != null && request.auth.uid == providerId;
+    }
+
+    // Provider Status - live location/status for professionals
+    match /provider_status/{providerId} {
+        allow read: if true;  // Public read for map display
+        allow create: if true;  // TEMPORARY: Allow seeding without auth
+        allow update: if request.auth != null && request.auth.uid == providerId;
+        allow delete: if request.auth != null && request.auth.uid == providerId;
+    }
+
     // Provider Schedules
     match /provider_schedules/{userId} {
         allow read: if true;
