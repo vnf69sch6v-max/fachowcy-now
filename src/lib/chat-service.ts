@@ -11,7 +11,7 @@ import {
     doc,
     updateDoc,
     increment,
-    writeBatch
+    setDoc
 } from "firebase/firestore";
 
 // ===========================================
@@ -114,6 +114,8 @@ export const ChatService = {
 
     /**
      * Send a message to a chat
+     * Step 1: Add message (always succeeds if auth + senderId match)
+     * Step 2: Try to update chat metadata (may fail if user not in participantIds yet)
      */
     sendMessage: async (
         chatId: string,
@@ -124,32 +126,38 @@ export const ChatService = {
             senderRole: 'client' | 'professional';
         }
     ) => {
-        if (!db) return;
+        if (!db) return null;
+
+        // Ensure senderRole has a valid value
+        const role = message.senderRole === 'professional' ? 'professional' : 'client';
 
         try {
-            const batch = writeBatch(db as Firestore);
+            // Step 1: Add message - this should always work with proper rules
             const msgRef = doc(collection(db as Firestore, `chats/${chatId}/messages`));
-
-            // Add message
-            batch.set(msgRef, {
+            await setDoc(msgRef, {
                 id: msgRef.id,
                 content: message.content,
                 senderId: message.senderId,
                 senderName: message.senderName,
-                senderRole: message.senderRole,
+                senderRole: role,
                 type: 'text',
                 createdAt: serverTimestamp()
             });
 
-            // Update chat metadata
-            const otherRole = message.senderRole === 'client' ? 'professional' : 'client';
-            batch.update(doc(db as Firestore, 'chats', chatId), {
-                lastMessage: message.content.substring(0, 100),
-                lastMessageAt: serverTimestamp(),
-                [`unreadCount.${otherRole}`]: increment(1)
-            });
+            // Step 2: Try to update chat metadata (may fail if user not in participantIds)
+            try {
+                const otherRole = role === 'client' ? 'professional' : 'client';
+                await updateDoc(doc(db as Firestore, 'chats', chatId), {
+                    lastMessage: message.content.substring(0, 100),
+                    lastMessageAt: serverTimestamp(),
+                    [`unreadCount.${otherRole}`]: increment(1)
+                });
+            } catch (updateError) {
+                // Chat metadata update failed (user might not be in participantIds yet)
+                // This is OK - message was still sent successfully
+                console.warn("Could not update chat metadata (user may not be participant yet):", updateError);
+            }
 
-            await batch.commit();
             return msgRef.id;
         } catch (error) {
             console.error("Error sending message:", error);

@@ -105,7 +105,7 @@ export function SimpleChatWindow({ chatId, onClose }: SimpleChatWindowProps) {
                 content: messageContent,
                 senderId: user.uid,
                 senderName: user.displayName || 'Użytkownik',
-                senderRole: userRole as 'client' | 'professional'
+                senderRole: userRole === 'professional' ? 'professional' : 'client'
             });
         } catch (error) {
             console.error('Failed to send message:', error);
