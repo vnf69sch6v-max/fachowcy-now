@@ -60,9 +60,16 @@ export function JobDetailsModal({ job, isOpen, onClose, onStartChat }: JobDetail
                 proposalCount: increment(1)
             });
 
-            // 3. Send notification to job chat
-            if (job.chatId) {
-                await addDoc(collection(db, `chats/${job.chatId}/messages`), {
+            // 3. Get chatId from job (might not be in props)
+            let chatId = job.chatId;
+            if (!chatId) {
+                const jobDoc = await getDoc(doc(db, 'jobs', job.id));
+                chatId = jobDoc.data()?.chatId;
+            }
+
+            // 4. Send notification to job chat
+            if (chatId) {
+                await addDoc(collection(db, `chats/${chatId}/messages`), {
                     content: `📨 **Nowa oferta od ${user.displayName || 'fachowca'}**\n\n💰 Cena: **${proposalPrice} zł**\n\n"${proposalMessage}"`,
                     senderId: 'system',
                     senderRole: 'system',
@@ -73,10 +80,11 @@ export function JobDetailsModal({ job, isOpen, onClose, onStartChat }: JobDetail
                     createdAt: serverTimestamp()
                 });
 
-                // Update chat last message
-                await updateDoc(doc(db, 'chats', job.chatId), {
+                // Update chat last message + increment client unread count
+                await updateDoc(doc(db, 'chats', chatId), {
                     lastMessage: `📨 Nowa oferta: ${proposalPrice} zł`,
-                    lastMessageAt: serverTimestamp()
+                    lastMessageAt: serverTimestamp(),
+                    'unreadCount.client': increment(1)
                 });
             }
 
