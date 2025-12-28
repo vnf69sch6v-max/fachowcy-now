@@ -60,22 +60,15 @@ export function ProposalsListModal({ isOpen, onClose, job, onChatOpen }: Proposa
     const handleMessage = async (proposal: JobProposal) => {
         if (!user) return;
 
-        try {
-            // Create or get existing chat (1:1 between client and pro)
-            const chatId = await ChatService.createChat(
-                user.uid,
-                proposal.proId,
-                user.displayName || "Klient",
-                proposal.proName,
-                job.id // Passing job.id as bookingId context for now
-            );
+        // Chat is already created with the job, use job.chatId
+        // The professional will be added to participants when they accept
+        const chatId = job.chatId;
 
-            if (chatId) {
-                onChatOpen?.(chatId);
-                onClose();
-            }
-        } catch (error) {
-            console.error("Error creating chat:", error);
+        if (chatId) {
+            onChatOpen?.(chatId);
+            onClose();
+        } else {
+            console.error("No chatId found for job:", job.id);
         }
     };
 
