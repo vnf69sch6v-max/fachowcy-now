@@ -146,25 +146,30 @@ service cloud.firestore {
 
     // Chats - tylko uczestnicy konwersacji
     match /chats/{chatId} {
+      // Read: allow if user is a participant
       allow read: if request.auth != null && 
         (resource.data.clientId == request.auth.uid || 
          resource.data.professionalId == request.auth.uid ||
          request.auth.uid in resource.data.participantIds);
       
+      // Create: any authenticated user can create a chat
       allow create: if request.auth != null;
       
+      // Update: participants can update
       allow update: if request.auth != null && 
         (resource.data.clientId == request.auth.uid || 
          resource.data.professionalId == request.auth.uid ||
          request.auth.uid in resource.data.participantIds);
       
-      // Messages subcollection
+      // Messages subcollection - simpler rules
       match /messages/{messageId} {
+        // Anyone authenticated can read messages (for now)
         allow read: if request.auth != null;
+        
+        // Create: must be authenticated, senderId must match OR be system
         allow create: if request.auth != null && 
           (request.resource.data.senderId == request.auth.uid || 
-           request.resource.data.senderId == 'system' ||
-           request.resource.data.senderRole == 'system');
+           request.resource.data.senderId == 'system');
       }
     }
   }
