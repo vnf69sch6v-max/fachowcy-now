@@ -207,49 +207,52 @@ function OnlineMap({ onSelectPro, categoryFilter, centerLocation, userRole, fitB
         };
     }, [map]);
 
-    // Effect to update displayItems from liveProviders
+    // Effect to update displayItems from liveProviders or jobs
     useEffect(() => {
+        // Early return if db is not available
+        if (!db) {
+            setLoading(false);
+            return;
+        }
+
         if (userRole === 'professional') {
             // PROFESSIONAL VIEW: Fetch OPEN JOBS from 'jobs' collection
-            // Showing available jobs in the area
-            // Memoize query to prevent re-subscribing on every render
-            const jobsQuery = useMemo(() => query(
+            const jobsQuery = query(
                 collection(db as Firestore, "jobs"),
                 where("status", "==", "open")
-            ), []); // Empty dependency array as query is static for now
+            );
 
             const unsubscribe = onSnapshot(jobsQuery, (snapshot) => {
                 const jobs: Professional[] = [];
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-
-                    // Filter relevant jobs (client side geo filtering matching useLiveProviders logic ideally)
-                    // For now, simple fetch all open jobs
-
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
                     if (data.location) {
                         jobs.push({
-                            id: doc.id,
-                            name: data.category || "Zlecenie", // Use category as main title for marker
+                            id: docSnap.id,
+                            name: data.category || "Zlecenie",
                             profession: data.title || data.description?.substring(0, 20) || "Szczegóły",
                             price: data.priceEstimate?.min || 0,
                             rating: 0,
-                            imageUrl: data.photoUrls?.[0] || `https://api.dicebear.com/7.x/icons/svg?seed=${doc.id}`,
+                            imageUrl: data.photoUrls?.[0] || `https://api.dicebear.com/7.x/icons/svg?seed=${docSnap.id}`,
                             location: { lat: data.location.lat, lng: data.location.lng },
                             isPromoted: data.urgency === 'asap',
                             status: 'online',
                             isBusy: false,
-                            type: 'job_marker', // Signal to FintechMarker
-                            clientName: data.clientName // Extra data
+                            type: 'job_marker',
+                            clientName: data.clientName
                         } as Professional);
                     }
                 });
                 setDisplayItems(jobs);
                 setLoading(false);
+            }, (error) => {
+                console.error("Jobs listener error:", error);
+                setLoading(false);
             });
+
             return () => unsubscribe();
         } else {
             // CLIENT VIEW: Use liveProviders from hook
-            // Transform Provider data to Professional interface
             const mappedProviders: Professional[] = liveProviders.map(p => ({
                 id: p.id,
                 name: p.displayName || p.title || 'Fachowiec',
@@ -266,7 +269,7 @@ function OnlineMap({ onSelectPro, categoryFilter, centerLocation, userRole, fitB
             setDisplayItems(mappedProviders);
             setLoading(providersLoading);
         }
-    }, [userRole, user, liveProviders, providersLoading]);
+    }, [userRole, liveProviders, providersLoading]);
 
     // Initialize Clusterer
     useEffect(() => {

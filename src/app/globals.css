@@ -24,3 +24,78 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Map Marker Animations - Global styles to prevent per-marker injection */
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(0, 255, 157, 0.4),
+      0 0 20px rgba(0, 255, 157, 0.2),
+      0 0 40px rgba(0, 255, 157, 0.1);
+  }
+
+  50% {
+    box-shadow: 0 0 12px rgba(0, 255, 157, 0.6),
+      0 0 30px rgba(0, 255, 157, 0.4),
+      0 0 60px rgba(0, 255, 157, 0.2);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.shimmer-effect {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer-effect::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 215, 0, 0.15) 25%,
+      rgba(255, 215, 0, 0.3) 50%,
+      rgba(255, 215, 0, 0.15) 75%,
+      transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2.5s linear infinite;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.marker-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.online-dot {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  background: #00ff9d;
+  border-radius: 50%;
+  border: 2px solid rgba(10, 10, 10, 0.9);
+  box-shadow: 0 0 8px #00ff9d;
+}

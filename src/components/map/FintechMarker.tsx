@@ -11,7 +11,7 @@
  * Uses AdvancedMarkerElement from @vis.gl/react-google-maps
  */
 
-import { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, memo } from "react";
 import { AdvancedMarker, useAdvancedMarkerRef, Pin } from "@vis.gl/react-google-maps";
 import { motion } from "framer-motion";
 import { MarkerStatus, MarkerData } from "@/types/chat";
@@ -130,7 +130,7 @@ interface MarkerContentProps {
     isSelected?: boolean;
 }
 
-function MarkerContent({ data, isSelected }: MarkerContentProps) {
+const MarkerContent = memo(function MarkerContent({ data, isSelected }: MarkerContentProps) {
     const statusClass = MARKER_STYLES[data.status] || MARKER_STYLES.default;
 
     return (
@@ -167,7 +167,8 @@ function MarkerContent({ data, isSelected }: MarkerContentProps) {
             )}
         </motion.div>
     );
-}
+});
+MarkerContent.displayName = 'MarkerContent';
 
 // ===========================================
 // MAIN FINTECH MARKER COMPONENT
@@ -187,17 +188,14 @@ export function FintechMarker({ data, onClick, isSelected }: FintechMarkerProps)
     }, [data, onClick]);
 
     return (
-        <>
-            <MarkerStyles />
-            <AdvancedMarker
-                ref={markerRef}
-                position={data.position}
-                onClick={handleClick}
-                zIndex={isSelected ? 100 : data.status === 'premium' ? 50 : 10}
-            >
-                <MarkerContent data={data} isSelected={isSelected} />
-            </AdvancedMarker>
-        </>
+        <AdvancedMarker
+            ref={markerRef}
+            position={data.position}
+            onClick={handleClick}
+            zIndex={isSelected ? 100 : data.status === 'premium' ? 50 : 10}
+        >
+            <MarkerContent data={data} isSelected={isSelected} />
+        </AdvancedMarker>
     );
 }
 

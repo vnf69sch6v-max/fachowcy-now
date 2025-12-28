@@ -16,10 +16,13 @@ import {
     startAt,
     endAt,
     onSnapshot,
-    Unsubscribe
+    getDocs,
+    Unsubscribe,
+    Firestore
 } from "firebase/firestore";
 import { geohashQueryBounds, distanceBetween } from "geofire-common";
 import { db } from "@/lib/firebase";
+import { useDebounce } from "./useDebounce";
 import {
     ServiceListing,
     ServiceCategory,
@@ -162,81 +165,111 @@ export function useLiveSearch(options: SearchOptions | null): SearchResults {
     };
 }
 
-// ===========================================
-// FALLBACK HOOK (For providers collection)
-// ===========================================
-
 /**
- * useLiveProviders - listens to existing providers/provider_status
- * for backwards compatibility with current map implementation
+ * useLiveProviders - Fetches providers with debounced geohash queries
+ * Performance optimized: uses getDocs instead of onSnapshot
  */
 export function useLiveProviders(options: SearchOptions | null) {
     const [providers, setProviders] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
+    // Debounce the search options to prevent excessive queries
+    const debouncedOptions = useDebounce(options, 500);
+
     useEffect(() => {
-        if (!options || !db) {
+        if (!debouncedOptions || !db) {
             setProviders([]);
             setIsLoading(false);
             return;
         }
 
-        // Listen to providers collection
-        const q = query(collection(db, "providers"));
+        let isMounted = true;
+        setIsLoading(true);
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const center = [options.center.lat, options.center.lng] as [number, number];
-            const radiusM = options.radiusKm * 1000;
+        const fetchProviders = async () => {
+            try {
+                const center = [debouncedOptions.center.lat, debouncedOptions.center.lng] as [number, number];
+                const radiusM = debouncedOptions.radiusKm * 1000;
 
-            const results: any[] = [];
+                // Use geohash bounds for efficient querying
+                const bounds = geohashQueryBounds(center, radiusM);
+                const firestore = db as Firestore;
+                const promises = bounds.map(b =>
+                    getDocs(query(
+                        collection(firestore, "providers"),
+                        orderBy("geohash"),
+                        startAt(b[0]),
+                        endAt(b[1])
+                    ))
+                );
 
-            snapshot.forEach(doc => {
-                const data = doc.data();
+                const snapshots = await Promise.all(promises);
+                const results: any[] = [];
 
-                // Extract location
-                let lat = 52.4064, lng = 16.9252; // Default Poznań
-                if (data.location?.latitude !== undefined) {
-                    lat = data.location.latitude;
-                    lng = data.location.longitude;
-                } else if (data.location?.lat !== undefined) {
-                    lat = data.location.lat;
-                    lng = data.location.lng;
-                }
+                for (const snapshot of snapshots) {
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
 
-                // Check distance
-                const distance = distanceBetween([lat, lng], center);
-                if (distance * 1000 <= radiusM) {
-                    results.push({
-                        id: doc.id,
-                        ...data,
-                        location: { lat, lng },
-                        // Add isPromoted flag if missing
-                        isPromoted: data.isPromoted || false
+                        // Extract location
+                        let lat = 52.4064, lng = 16.9252;
+                        if (data.location?.latitude !== undefined) {
+                            lat = data.location.latitude;
+                            lng = data.location.longitude;
+                        } else if (data.location?.lat !== undefined) {
+                            lat = data.location.lat;
+                            lng = data.location.lng;
+                        }
+
+                        // Check distance
+                        const distance = distanceBetween([lat, lng], center);
+                        if (distance * 1000 <= radiusM) {
+                            // Avoid duplicates
+                            if (!results.find(r => r.id === doc.id)) {
+                                results.push({
+                                    id: doc.id,
+                                    ...data,
+                                    location: { lat, lng },
+                                    isPromoted: data.isPromoted || false
+                                });
+                            }
+                        }
                     });
                 }
-            });
 
-            // Sort with sponsor-first logic
-            const sorted = results.sort((a, b) => {
-                if (a.isPromoted && !b.isPromoted) return -1;
-                if (!a.isPromoted && b.isPromoted) return 1;
-                return (b.rating || 0) - (a.rating || 0);
-            });
+                // Sort with sponsor-first logic
+                const sorted = results.sort((a, b) => {
+                    if (a.isPromoted && !b.isPromoted) return -1;
+                    if (!a.isPromoted && b.isPromoted) return 1;
+                    return (b.rating || 0) - (a.rating || 0);
+                });
 
-            // Apply category filter if specified
-            const filtered = options.category
-                ? sorted.filter(p => {
-                    const providerCategory = (p.serviceType || p.category || '').toLowerCase();
-                    return providerCategory === options.category;
-                })
-                : sorted;
+                // Apply category filter if specified
+                const filtered = debouncedOptions.category
+                    ? sorted.filter(p => {
+                        const providerCategory = (p.serviceType || p.category || '').toLowerCase();
+                        return providerCategory === debouncedOptions.category;
+                    })
+                    : sorted;
 
-            setProviders(filtered);
-            setIsLoading(false);
-        });
+                if (isMounted) {
+                    setProviders(filtered);
+                    setIsLoading(false);
+                }
+            } catch (error) {
+                console.error("Provider fetch error:", error);
+                if (isMounted) {
+                    setProviders([]);
+                    setIsLoading(false);
+                }
+            }
+        };
 
-        return () => unsubscribe();
-    }, [options?.center.lat, options?.center.lng, options?.radiusKm, options?.category]);
+        fetchProviders();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [debouncedOptions]);
 
     return { providers, isLoading };
 }
