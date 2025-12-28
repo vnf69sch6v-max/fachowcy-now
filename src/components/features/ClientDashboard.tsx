@@ -270,17 +270,29 @@ export function ClientDashboard({ onLocationSelect, onChatOpen }: {
         return () => unsubscribe();
     }, [user]);
 
-    // Fetch My Jobs (Unified Jobs Collection)
+    // Fetch My Jobs (Unified Jobs Collection) - Real-time listener
     const [myJobs, setMyJobs] = useState<any[]>([]);
     useEffect(() => {
-        if (!user) return;
+        if (!user || !db) return;
 
-        // Import dynamically to avoid SSR issues if any, or just standard import
-        import("@/lib/job-service").then(({ JobService }) => {
-            JobService.getClientJobs(user.uid).then(jobs => {
-                setMyJobs(jobs);
-            });
+        const jobsQuery = query(
+            collection(db, 'jobs'),
+            where('clientId', '==', user.uid),
+            orderBy('createdAt', 'desc'),
+            limit(10)
+        );
+
+        const unsubscribe = onSnapshot(jobsQuery, (snapshot) => {
+            const jobs = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setMyJobs(jobs);
+        }, (error) => {
+            console.error("Error fetching jobs:", error);
         });
+
+        return () => unsubscribe();
     }, [user]);
 
     if (loading) return (
@@ -343,18 +355,35 @@ export function ClientDashboard({ onLocationSelect, onChatOpen }: {
 
                                     <div className="flex items-center gap-2 text-xs text-slate-400 mb-3">
                                         <Clock className="w-3.5 h-3.5" />
-                                        <span>Wygasa za 7 dni</span>
+                                        <span>Status: {job.status === 'open' ? 'Szukam fachowców' : job.status}</span>
                                     </div>
 
                                     <div className="flex gap-2">
-                                        <button
-                                            onClick={() => setSelectedJobForProposals(job)}
-                                            className="flex-1 py-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold rounded-xl transition-colors"
-                                        >
-                                            Zobacz oferty ({job.proposalIds?.length || 0})
-                                        </button>
-                                        <button className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl transition-colors">
-                                            Edytuj
+                                        {(job.proposalCount || 0) > 0 && (
+                                            <button
+                                                onClick={() => setSelectedJobForProposals(job)}
+                                                className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1"
+                                            >
+                                                <span className="bg-white/20 px-1.5 py-0.5 rounded-full text-[10px]">{job.proposalCount}</span>
+                                                Oferty
+                                            </button>
+                                        )}
+                                        {job.chatId && (
+                                            <button
+                                                onClick={() => onChatOpen?.({
+                                                    id: job.chatId,
+                                                    hostId: job.assignedProId || 'marketplace',
+                                                    hostName: job.assignedProName || 'Giełda',
+                                                    hostImageUrl: ''
+                                                })}
+                                                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1"
+                                            >
+                                                <MessageCircle className="w-3.5 h-3.5" />
+                                                Czat
+                                            </button>
+                                        )}
+                                        <button className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl transition-colors text-xs">
+                                            ✕
                                         </button>
                                     </div>
                                 </motion.div>

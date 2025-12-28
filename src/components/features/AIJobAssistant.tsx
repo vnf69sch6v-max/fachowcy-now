@@ -1159,6 +1159,59 @@ export function AIJobAssistant({ isOpen, onClose, onJobCreated, onViewProOnMap, 
                         </motion.div>
                     )}
 
+                    {/* Quick Action Chips */}
+                    {draft.aiResult && state !== 'done' && (
+                        <div className="px-5 py-3 border-t border-white/5 overflow-x-auto scrollbar-hide">
+                            <div className="flex gap-2 w-max">
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    onClick={() => {
+                                        setInputText('Zmień cenę na 200 zł');
+                                        handleSend();
+                                    }}
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-xl text-xs font-medium border border-violet-500/20 transition-all"
+                                >
+                                    💰 Szybka Wycena
+                                </motion.button>
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    onClick={() => setInputText('Zaproponuj termin na jutro')}
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded-xl text-xs font-medium border border-blue-500/20 transition-all"
+                                >
+                                    📅 Zaproponuj Termin
+                                </motion.button>
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    onClick={() => setInputText('Potrzebuję zdjęcia problemu')}
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-xl text-xs font-medium border border-emerald-500/20 transition-all"
+                                >
+                                    📸 Potrzebuję zdjęcia
+                                </motion.button>
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    onClick={() => setInputText('Jaka jest Twoja lokalizacja?')}
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-xl text-xs font-medium border border-cyan-500/20 transition-all"
+                                >
+                                    📍 Jaka lokalizacja
+                                </motion.button>
+                                {draft.matchedPros && draft.matchedPros.length > 0 && (
+                                    <motion.button
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={handlePublish}
+                                        className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-500/20 transition-all"
+                                    >
+                                        🚀 Opublikuj zlecenie
+                                    </motion.button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Input - Fixed at bottom */}
                     <div className="p-5 border-t border-white/10 bg-gradient-to-t from-slate-950 to-slate-900/50">
                         <div className="flex items-center gap-3">
