@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChatList } from "./ChatList";
 import { ChatWindow } from "./ChatWindow";
 import { ChatRoom } from "@/types/chat";
@@ -76,7 +76,7 @@ function ChatWindowWrapper({ chatId, onClose }: { chatId: string, onClose: () =>
     const [chatData, setChatData] = useState<ChatRoom | null>(null);
     const { user, userRole } = useAuth();
 
-    useState(() => {
+    useEffect(() => {
         const fetchChat = async () => {
             if (!db) return;
             const snap = await getDoc(doc(db as Firestore, "chats", chatId));
@@ -85,7 +85,7 @@ function ChatWindowWrapper({ chatId, onClose }: { chatId: string, onClose: () =>
             }
         };
         fetchChat();
-    });
+    }, [chatId]);
 
     if (!chatData || !user) return <div className="h-full flex items-center justify-center">Ładowanie...</div>;
 

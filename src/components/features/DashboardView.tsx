@@ -16,7 +16,7 @@ interface DashboardViewProps {
 
 export function DashboardView({ onChatOpen }: DashboardViewProps) {
     const { user, userRole } = useAuth();
-    const [orders, setOrders] = useState<(Booking & { hasReview?: boolean })[]>([]);
+    const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [reviewBooking, setReviewBooking] = useState<(Booking & { hasReview?: boolean }) | null>(null);
 
@@ -48,33 +48,80 @@ export function DashboardView({ onChatOpen }: DashboardViewProps) {
     useEffect(() => {
         if (!user || !db) return;
 
-        // Query real bookings based on ROLE
-        const field = userRole === 'professional' ? 'hostId' : 'clientId';
-
-        const q = query(
+        // Query BOOKINGS (old system)
+        const bookingsField = userRole === 'professional' ? 'hostId' : 'clientId';
+        const bookingsQuery = query(
             collection(db, "bookings"),
-            where(field, "==", user.uid)
+            where(bookingsField, "==", user.uid)
         );
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        // Query JOBS (new AI Assistant system) - only for clients
+        let jobsUnsubscribe = () => { };
+
+        if (userRole === 'client') {
+            const jobsQuery = query(
+                collection(db, "jobs"),
+                where("clientId", "==", user.uid)
+            );
+
+            jobsUnsubscribe = onSnapshot(jobsQuery, (snapshot) => {
+                const jobs = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    // Map jobs fields to booking-like structure for unified display
+                    status: doc.data().status === 'open' ? 'PENDING_APPROVAL' :
+                        doc.data().status === 'accepted' ? 'CONFIRMED' :
+                            doc.data().status,
+                    clientSnapshot: { displayName: doc.data().clientName },
+                    hostSnapshot: { displayName: doc.data().assignedProName || 'Giełda Zleceń' },
+                    listingSnapshot: { title: doc.data().title, serviceType: doc.data().category },
+                    pricing: { totalAmount: doc.data().priceEstimate?.max },
+                    createdAt: doc.data().createdAt,
+                    _isJob: true // Flag to identify jobs vs bookings
+                })) as any[];
+
+                setOrders(prev => {
+                    // Merge with bookings, keeping jobs separate
+                    const bookingsOnly = prev.filter(p => !p._isJob);
+                    return [...jobs, ...bookingsOnly].sort((a, b) => {
+                        const t1 = a.createdAt?.seconds || 0;
+                        const t2 = b.createdAt?.seconds || 0;
+                        return t2 - t1;
+                    });
+                });
+            });
+        }
+
+        const bookingsUnsubscribe = onSnapshot(bookingsQuery, (snapshot) => {
             const bookings = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
             } as Booking))
-                // Sort client-side to avoid index requirement
                 .sort((a, b) => {
                     const t1 = a.createdAt?.seconds || 0;
                     const t2 = b.createdAt?.seconds || 0;
                     return t2 - t1;
                 });
-            setOrders(bookings);
+
+            setOrders(prev => {
+                // Merge with jobs, keeping bookings separate
+                const jobsOnly = prev.filter(p => p._isJob);
+                return [...jobsOnly, ...bookings].sort((a, b) => {
+                    const t1 = a.createdAt?.seconds || 0;
+                    const t2 = b.createdAt?.seconds || 0;
+                    return t2 - t1;
+                });
+            });
             setLoading(false);
         }, (err) => {
             console.error("Error fetching bookings:", err);
             setLoading(false);
         });
 
-        return () => unsubscribe();
+        return () => {
+            bookingsUnsubscribe();
+            jobsUnsubscribe();
+        };
     }, [user, userRole]);
 
     const formatDate = (ts: Timestamp) => {
