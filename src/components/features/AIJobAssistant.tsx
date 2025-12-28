@@ -697,6 +697,87 @@ export function AIJobAssistant({ isOpen, onClose, onJobCreated, onViewProOnMap, 
 
 
     // Generate AI response using real Vertex AI
+    // Execute AI action
+    const executeAction = useCallback((action: { type: string; payload: any }) => {
+        console.log('Executing AI Action:', action);
+
+        switch (action.type) {
+            case 'UPDATE_PRICE':
+                if (action.payload.min !== undefined && action.payload.max !== undefined) {
+                    setDraft(prev => ({
+                        ...prev,
+                        aiResult: prev.aiResult ? {
+                            ...prev.aiResult,
+                            priceMin: action.payload.min,
+                            priceMax: action.payload.max
+                        } : undefined
+                    }));
+                }
+                break;
+
+            case 'UPDATE_CATEGORY':
+                if (action.payload.category) {
+                    setDraft(prev => ({
+                        ...prev,
+                        aiResult: prev.aiResult ? {
+                            ...prev.aiResult,
+                            category: action.payload.category
+                        } : undefined
+                    }));
+                }
+                break;
+
+            case 'UPDATE_URGENCY':
+                if (action.payload.urgency) {
+                    setDraft(prev => ({
+                        ...prev,
+                        aiResult: prev.aiResult ? {
+                            ...prev.aiResult,
+                            urgency: action.payload.urgency
+                        } : undefined
+                    }));
+                }
+                break;
+
+            case 'PUBLISH_JOB':
+                // Trigger publish flow
+                handlePublish();
+                break;
+
+            case 'SELECT_PROFESSIONAL':
+                if (action.payload.proId && draft.matchedPros) {
+                    const selectedPro = draft.matchedPros.find(p => p.id === action.payload.proId);
+                    if (selectedPro) {
+                        setDraft(prev => ({ ...prev, selectedPro }));
+                        setState('confirming');
+                    }
+                }
+                break;
+
+            case 'OPEN_BOOKING':
+                if (action.payload.proId && draft.matchedPros) {
+                    const pro = draft.matchedPros.find(p => p.id === action.payload.proId);
+                    if (pro) {
+                        setBookingPro(pro);
+                    }
+                }
+                break;
+
+            case 'CANCEL_JOB':
+                // Reset the draft and state
+                setDraft({ description: '' });
+                setState('greeting');
+                addMessage('assistant', '❌ Zlecenie zostało anulowane. Jak mogę Ci pomóc?');
+                break;
+
+            case 'NONE':
+            default:
+                // No action needed
+                break;
+        }
+    }, [draft.matchedPros, addMessage]);
+
+    // Generate AI response with action support
     const generateAIResponse = async (text: string): Promise<string> => {
         try {
             const response = await fetch('/api/ai/chat', {
@@ -712,15 +793,15 @@ export function AIJobAssistant({ isOpen, onClose, onJobCreated, onViewProOnMap, 
                             max: draft.aiResult.priceMax
                         } : null,
                         professionals: draft.matchedPros?.map(pro => ({
+                            id: pro.id,
                             name: pro.name,
                             profession: pro.profession,
                             rating: pro.rating,
                             price: pro.price,
-                            distance: pro.distance,
-                            responseRate: pro.responseRate,
-                            description: pro.description
+                            distance: pro.distance
                         })),
                         selectedPro: draft.selectedPro ? {
+                            id: draft.selectedPro.id,
                             name: draft.selectedPro.name,
                             price: draft.selectedPro.price
                         } : null,
@@ -735,24 +816,9 @@ export function AIJobAssistant({ isOpen, onClose, onJobCreated, onViewProOnMap, 
             const data = await response.json();
 
             if (data.success && data.response) {
-                // Check if AI wants to trigger booking
-                const lower = text.toLowerCase();
-                if (lower.match(/rezerwu|zarezerwu|umów|zamów|chcę go|wybieram|biorę/) && draft.matchedPros) {
-                    // Find which pro they want
-                    let selectedPro = draft.matchedPros[0];
-                    for (const pro of draft.matchedPros) {
-                        if (lower.includes(pro.name.toLowerCase().split(' ')[0].toLowerCase())) {
-                            selectedPro = pro;
-                            break;
-                        }
-                    }
-                    setDraft(prev => ({ ...prev, selectedPro }));
-                    setState('confirming');
-                }
-
-                // Check if booking confirmed
-                if (state === 'confirming' && lower.match(/dziś|dzisiaj|teraz|14|jutro|10|15|pojutrze/)) {
-                    setState('done');
+                // Execute any action returned by AI
+                if (data.action && data.action.type !== 'NONE') {
+                    executeAction(data.action);
                 }
 
                 return data.response;

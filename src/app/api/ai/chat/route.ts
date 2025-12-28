@@ -1,43 +1,70 @@
 /**
- * Vertex AI Chat API Route
+ * Vertex AI Chat API Route with Action Execution
  * 
  * Connects to Google Gemini for real-time AI conversation
- * Handles job analysis, questions, and booking flow
+ * Supports structured actions (change price, publish, etc.)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Initialize Gemini inside handler to prevent build errors
-// const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
+// Action types the AI can trigger
+export type AIAction =
+    | { type: 'UPDATE_PRICE'; payload: { min: number; max: number } }
+    | { type: 'UPDATE_CATEGORY'; payload: { category: string } }
+    | { type: 'UPDATE_URGENCY'; payload: { urgency: 'asap' | 'today' | 'week' | 'flexible' } }
+    | { type: 'PUBLISH_JOB'; payload: {} }
+    | { type: 'SELECT_PROFESSIONAL'; payload: { proId: string; proName: string } }
+    | { type: 'OPEN_BOOKING'; payload: { proId: string } }
+    | { type: 'CANCEL_JOB'; payload: {} }
+    | { type: 'NONE'; payload: {} };
 
-// System prompt for the assistant
-const SYSTEM_PROMPT = `Jesteś przyjaznym asystentem aplikacji FachowcyNow - platformy łączącej klientów z fachowcami (hydraulik, elektryk, sprzątanie, złota rączka).
+// System prompt for the assistant with action capabilities
+const SYSTEM_PROMPT = `Jesteś asystentem aplikacji FachowcyNow - platformy łączącej klientów z fachowcami.
 
 TWOJA OSOBOWOŚĆ:
 - Miły, pomocny, profesjonalny
-- Używasz emoji ale z umiarem
+- Używasz emoji z umiarem
 - Odpowiadasz po polsku
 - Jesteś konkretny i rzeczowy
 
 TWOJE MOŻLIWOŚCI:
-1. Analizowanie opisów problemów i kategoryzowanie (Hydraulik, Elektryk, Sprzątanie, Złota Rączka)
-2. Szacowanie kosztów usług
-3. Odpowiadanie na pytania o fachowców w kontekście
-4. Pomaganie w rezerwacji wizyt
-5. Wyjaśnianie różnic między fachowcami na liście
+1. Analizowanie opisów problemów i kategoryzowanie
+2. Szacowanie i MODYFIKOWANIE kosztów usług
+3. Pomaganie w publikacji zleceń
+4. Rezerwowanie fachowców
 
-⛔ OGRANICZENIA - BARDZO WAŻNE:
-- NIE odpowiadasz na pytania niezwiązane z aplikacją FachowcyNow
-- NIE prowadzisz rozmów na tematy osobiste, polityczne, religijne itp.
-- NIE udzielasz porad medycznych, prawnych czy finansowych
-- Jeśli użytkownik pyta o coś poza kontekstem aplikacji, grzecznie odpowiedz:
-  "Przepraszam, jestem asystentem FachowcyNow i mogę pomóc tylko z usługami domowymi. 🏠 W czym mogę Ci pomóc - hydraulik, elektryk, sprzątanie?"
+⚡ AKCJE - MOŻESZ WYKONYWAĆ NASTĘPUJĄCE CZYNNOŚCI:
+- UPDATE_PRICE: Gdy użytkownik prosi o zmianę ceny (np. "zmień na 200 zł", "ustaw budżet 150-300")
+- UPDATE_CATEGORY: Gdy użytkownik chce zmienić kategorię usługi
+- UPDATE_URGENCY: Gdy użytkownik określa pilność (asap/today/week/flexible)
+- PUBLISH_JOB: Gdy użytkownik potwierdza publikację zlecenia
+- SELECT_PROFESSIONAL: Gdy użytkownik wybiera konkretnego fachowca
+- OPEN_BOOKING: Gdy użytkownik chce zarezerwować wizytę
+- CANCEL_JOB: Gdy użytkownik chce anulować
 
-FORMAT ODPOWIEDZI:
-- Używaj **pogrubienia** dla ważnych informacji
-- Używaj emoji na początku sekcji (📋, 💰, 📅, etc.)
-- Odpowiadaj zwięźle (max 3-4 zdania na punkt)`;
+⛔ OGRANICZENIA:
+- NIE odpowiadaj na tematy niezwiązane z aplikacją
+- Grzecznie odmów pytań osobistych/politycznych/medycznych
+
+📋 FORMAT ODPOWIEDZI (ZAWSZE JSON):
+{
+  "message": "Twoja odpowiedź tekstowa dla użytkownika",
+  "action": {
+    "type": "NAZWA_AKCJI lub NONE",
+    "payload": { ...dane akcji }
+  }
+}
+
+PRZYKŁADY:
+User: "Zmień cenę na 200 zł"
+Response: {"message": "✅ Zmieniam szacowaną cenę na **200 zł**.", "action": {"type": "UPDATE_PRICE", "payload": {"min": 180, "max": 220}}}
+
+User: "Publikuj to zlecenie"
+Response: {"message": "📤 Publikuję Twoje zlecenie! Fachowcy wkrótce zaczną składać oferty.", "action": {"type": "PUBLISH_JOB", "payload": {}}}
+
+User: "Który fachowiec jest najlepszy?"
+Response: {"message": "Na podstawie ocen i odległości, polecam **Jan Kowalski** - ma najwyższą ocenę 4.9/5 i jest najbliżej.", "action": {"type": "NONE", "payload": {}}}`;
 
 export async function POST(request: NextRequest) {
     try {
@@ -52,10 +79,10 @@ export async function POST(request: NextRequest) {
         }
 
         // Build context for AI
-        let contextPrompt = '';
+        let contextPrompt = '\n\n## AKTUALNY KONTEKST ZLECENIA:';
 
         if (context?.jobDescription) {
-            contextPrompt += `\nOpis problemu klienta: "${context.jobDescription}"`;
+            contextPrompt += `\nOpis problemu: "${context.jobDescription}"`;
         }
 
         if (context?.category) {
@@ -63,54 +90,69 @@ export async function POST(request: NextRequest) {
         }
 
         if (context?.priceRange) {
-            contextPrompt += `\nSzacowana cena: ${context.priceRange.min}-${context.priceRange.max} zł`;
+            contextPrompt += `\nAktualna cena: ${context.priceRange.min}-${context.priceRange.max} zł`;
         }
 
         if (context?.professionals && context.professionals.length > 0) {
-            contextPrompt += `\n\nDostępni fachowcy w okolicy:`;
+            contextPrompt += `\n\nDostępni fachowcy:`;
             context.professionals.forEach((pro: any, i: number) => {
-                contextPrompt += `\n${i + 1}. ${pro.name} (${pro.profession}) - Ocena: ${pro.rating}/5, Cena: ${pro.price} zł, Odległość: ${pro.distance} km, Response rate: ${pro.responseRate || 95}%`;
-                if (pro.description) {
-                    contextPrompt += ` - "${pro.description}"`;
-                }
+                contextPrompt += `\n${i + 1}. ${pro.name} (ID: ${pro.id}) - ${pro.profession}, Ocena: ${pro.rating}/5, Cena: ${pro.price} zł, Odległość: ${pro.distance} km`;
             });
         }
 
         if (context?.selectedPro) {
-            contextPrompt += `\n\nWybrany fachowiec: ${context.selectedPro.name}`;
+            contextPrompt += `\nWybrany fachowiec: ${context.selectedPro.name}`;
         }
 
-        if (context?.location) {
-            contextPrompt += `\nLokalizacja klienta: ${context.location.address || 'Pobrana'}`;
+        if (context?.location?.address) {
+            contextPrompt += `\nLokalizacja: ${context.location.address}`;
         }
 
-        // Create the model
+        if (context?.currentState) {
+            contextPrompt += `\nStan procesu: ${context.currentState}`;
+        }
+
+        // Create the model with JSON mode
         const model = genAI.getGenerativeModel({
             model: 'gemini-2.0-flash',
             generationConfig: {
-                temperature: 0.7,
+                temperature: 0.3,
                 maxOutputTokens: 500,
+                responseMimeType: 'application/json'
             }
         });
 
         // Generate response
-        const prompt = `${SYSTEM_PROMPT}${contextPrompt}\n\nWiadomość użytkownika: "${message}"\n\nTwoja odpowiedź:`;
+        const prompt = `${SYSTEM_PROMPT}${contextPrompt}\n\n## Wiadomość użytkownika:\n"${message}"\n\nOdpowiedz TYLKO poprawnym JSON:`;
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
 
+        // Parse the JSON response
+        let parsed: { message: string; action: AIAction };
+        try {
+            parsed = JSON.parse(text);
+        } catch (e) {
+            // If JSON parsing fails, wrap the text as a message
+            parsed = {
+                message: text,
+                action: { type: 'NONE', payload: {} }
+            };
+        }
+
         return NextResponse.json({
-            response: text,
+            response: parsed.message,
+            action: parsed.action,
             success: true
         });
 
     } catch (error) {
         console.error('Vertex AI Error:', error);
 
-        // Fallback response
         return NextResponse.json({
-            response: 'Przepraszam, mam chwilowe problemy z połączeniem. Spróbuj ponownie za chwilę! 🔄',
+            response: 'Przepraszam, mam chwilowe problemy z połączeniem. Spróbuj ponownie! 🔄',
+            action: { type: 'NONE', payload: {} },
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error'
         });
