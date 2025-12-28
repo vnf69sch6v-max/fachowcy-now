@@ -86,9 +86,9 @@ service cloud.firestore {
                       && request.resource.data.providerId == request.auth.uid
                       && request.resource.data.status == 'pending';
         
-        // Tylko status może być zmieniony (przez transakcję z jobs)
+        // Status changes: accept or reject
         allow update: if request.auth != null &&
-                      onlyUpdating(['status', 'acceptedAt']);
+                      onlyUpdating(['status', 'acceptedAt', 'rejectedAt']);
       }
     }
     

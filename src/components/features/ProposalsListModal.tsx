@@ -53,8 +53,16 @@ export function ProposalsListModal({ isOpen, onClose, job, onChatOpen }: Proposa
     };
 
     const handleReject = async (proposal: JobProposal) => {
-        // TODO: Add reject method to JobService
-        console.log("Rejecting proposal:", proposal.id);
+        if (!user) return;
+
+        const result = await JobService.rejectProposal(job.id, proposal.id, user.uid);
+
+        if (result.success) {
+            // Optionally refresh proposals or show success message
+            console.log("Proposal rejected successfully");
+        } else {
+            console.error("Failed to reject proposal:", result.error);
+        }
     };
 
     const handleMessage = async (proposal: JobProposal) => {

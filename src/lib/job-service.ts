@@ -413,4 +413,94 @@ export class JobService {
             return false;
         }
     }
+
+    /**
+     * Client rejects a proposal from a professional
+     */
+    static async rejectProposal(
+        jobId: string,
+        proposalId: string,
+        clientId: string
+    ): Promise<{ success: boolean; error?: string }> {
+        if (!db) return { success: false, error: "Database not available" };
+
+        try {
+            const jobRef = doc(db, 'jobs', jobId);
+            const proposalRef = doc(db, 'jobs', jobId, 'proposals', proposalId);
+
+            const [jobSnap, proposalSnap] = await Promise.all([
+                getDoc(jobRef),
+                getDoc(proposalRef)
+            ]);
+
+            if (!jobSnap.exists()) {
+                return { success: false, error: "Job not found" };
+            }
+
+            if (!proposalSnap.exists()) {
+                return { success: false, error: "Proposal not found" };
+            }
+
+            const jobData = jobSnap.data();
+            if (jobData.clientId !== clientId) {
+                return { success: false, error: "Not authorized to reject this proposal" };
+            }
+
+            // Update proposal status to rejected
+            await updateDoc(proposalRef, {
+                status: 'rejected',
+                rejectedAt: serverTimestamp()
+            });
+
+            return { success: true };
+        } catch (error) {
+            console.error("Error rejecting proposal:", error);
+            return { success: false, error: "Failed to reject proposal" };
+        }
+    }
+
+    /**
+     * Cancel a job (by client or system)
+     */
+    static async cancelJob(
+        jobId: string,
+        userId: string,
+        reason?: string
+    ): Promise<{ success: boolean; error?: string }> {
+        if (!db) return { success: false, error: "Database not available" };
+
+        try {
+            const jobRef = doc(db, 'jobs', jobId);
+            const jobSnap = await getDoc(jobRef);
+
+            if (!jobSnap.exists()) {
+                return { success: false, error: "Job not found" };
+            }
+
+            const jobData = jobSnap.data();
+
+            // Only client or assigned pro can cancel
+            if (jobData.clientId !== userId && jobData.assignedProId !== userId) {
+                return { success: false, error: "Not authorized" };
+            }
+
+            // Can only cancel if not completed
+            if (jobData.status === 'completed') {
+                return { success: false, error: "Cannot cancel completed job" };
+            }
+
+            await updateDoc(jobRef, {
+                status: 'cancelled',
+                cancelledAt: serverTimestamp(),
+                cancelledBy: userId,
+                cancellationReason: reason || null,
+                updatedAt: serverTimestamp()
+            });
+
+            return { success: true };
+        } catch (error) {
+            console.error("Error cancelling job:", error);
+            return { success: false, error: "Failed to cancel job" };
+        }
+    }
 }
