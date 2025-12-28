@@ -10,7 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Booking, BookingStatus, bookingConverter } from "@/types/firestore-v2";
 import { AvailabilityEditor } from "@/components/pro/AvailabilityEditor";
 import { SubscriptionPlans } from "@/components/features/SubscriptionPlans";
-import { ProposalModal } from "@/components/features/ProposalModal";
+import { JobDetailsModal } from "@/components/features/JobDetailsModal";
 
 // Interface for job request display
 interface JobRequest {
@@ -566,16 +566,15 @@ function JobBoardList() {
                 ))}
             </div>
 
-            {/* Proposal Modal */}
+            {/* Job Details Modal */}
             {selectedJob && (
-                <ProposalModal
+                <JobDetailsModal
                     isOpen={!!selectedJob}
                     onClose={() => setSelectedJob(null)}
                     job={selectedJob}
-                    onSuccess={(proposalId) => {
-                        console.log('Proposal submitted:', proposalId);
+                    onStartChat={(chatId) => {
+                        console.log('Opening chat:', chatId);
                         setSelectedJob(null);
-                        // Could show a toast or refresh jobs list
                     }}
                 />
             )}
