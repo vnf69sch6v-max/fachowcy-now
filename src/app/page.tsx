@@ -54,6 +54,8 @@ export default function Home() {
     toggleRole,
     loginAsDemoSponsor,
     loginGoogle,
+    loginWithEmail,
+    registerWithEmail,
     logout
   } = useAuth();
 
@@ -68,7 +70,15 @@ export default function Home() {
   const [mapCenter, setMapCenter] = useState<PlaceLocation | null>(null);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
+
   const [fitBoundsLocations, setFitBoundsLocations] = useState<{ user: { lat: number; lng: number }; pro: { lat: number; lng: number } } | null>(null);
+
+  // Email Login State
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [authError, setAuthError] = useState("");
 
   // Check if we're in online mode (Google Maps API key present)
   const isOnline = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
@@ -141,6 +151,20 @@ export default function Home() {
 
   // Login Screen (Intro)
   if (!user) {
+    const handleEmailAuth = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setAuthError("");
+      try {
+        if (isRegistering) {
+          await registerWithEmail(email, password, name || "Użytkownik");
+        } else {
+          await loginWithEmail(email, password);
+        }
+      } catch (err: any) {
+        setAuthError(err.message || "Wystąpił błąd logowania");
+      }
+    };
+
     return (
       <main className="flex min-h-screen flex-col items-center justify-center p-8 bg-slate-950 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
@@ -163,7 +187,6 @@ export default function Home() {
             >
               <span className="text-2xl">👤</span>
               <span className="font-semibold text-sm">Jestem Klientem</span>
-              <span className="text-[10px] opacity-70">Szukam fachowca</span>
             </button>
             <button
               onClick={() => setRole('professional')}
@@ -174,11 +197,62 @@ export default function Home() {
             >
               <span className="text-2xl">🔧</span>
               <span className="font-semibold text-sm">Jestem Fachowcem</span>
-              <span className="text-[10px] opacity-70">Oferuję usługi</span>
             </button>
           </div>
 
-          <div className="flex flex-col gap-3 pt-2">
+          {/* Auth Form */}
+          <form onSubmit={handleEmailAuth} className="flex flex-col gap-3 text-left">
+            {isRegistering && (
+              <input
+                type="text"
+                placeholder="Imię i Nazwisko"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full p-3 rounded-xl bg-slate-800 border border-white/10 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                required
+              />
+            )}
+            <input
+              type="email"
+              placeholder="Adres e-mail"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full p-3 rounded-xl bg-slate-800 border border-white/10 text-white focus:outline-none focus:border-blue-500 transition-colors"
+              required
+            />
+            <input
+              type="password"
+              placeholder="Hasło"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full p-3 rounded-xl bg-slate-800 border border-white/10 text-white focus:outline-none focus:border-blue-500 transition-colors"
+              required
+            />
+
+            {authError && <p className="text-red-400 text-sm text-center">{authError}</p>}
+
+            <button
+              type="submit"
+              className={`py-3 px-8 rounded-xl font-bold transition-transform active:scale-95 shadow-lg flex items-center justify-center gap-2 ${userRole === 'client' ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}
+            >
+              {isRegistering ? 'Zarejestruj się' : 'Zaloguj się'}
+            </button>
+          </form>
+
+          <button
+            onClick={() => setIsRegistering(!isRegistering)}
+            className="text-sm text-slate-400 hover:text-white underline"
+          >
+            {isRegistering ? 'Masz już konto? Zaloguj się' : 'Nie masz konta? Zarejestruj się'}
+          </button>
+
+          <div className="flex items-center gap-2 opacity-50 my-1">
+            <div className="h-px bg-white/20 flex-1" />
+            <span className="text-xs text-white">LUB</span>
+            <div className="h-px bg-white/20 flex-1" />
+          </div>
+
+          <div className="flex flex-col gap-3">
             <button
               onClick={loginGoogle}
               className="py-3 px-8 bg-white hover:bg-slate-100 text-slate-900 rounded-xl font-bold transition-transform active:scale-95 shadow-lg flex items-center justify-center gap-2"
@@ -189,14 +263,8 @@ export default function Home() {
                 <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
               </svg>
-              Kontynuuj jako {userRole === 'client' ? 'Klient' : 'Fachowiec'}
+              Kontynuuj z Google
             </button>
-
-            <div className="flex items-center gap-2 opacity-50 my-1">
-              <div className="h-px bg-white/20 flex-1" />
-              <span className="text-xs text-white">LUB</span>
-              <div className="h-px bg-white/20 flex-1" />
-            </div>
 
             <button
               onClick={loginAsDemoSponsor}
@@ -205,30 +273,6 @@ export default function Home() {
               Wejdź jako Gość (Demo)
             </button>
           </div>
-
-          {/* Dev tools - hidden by default */}
-          <details className="text-left">
-            <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-400">[DEV] Narzędzia</summary>
-            <div className="mt-2 flex flex-col gap-1">
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await seedFachowcy();
-                    if (res.success) {
-                      alert(`Sukces! Dodano ${res.count} fachowców.`);
-                    } else {
-                      alert(`Błąd: ${res.error}`);
-                    }
-                  } catch (e) {
-                    alert("Błąd: " + e);
-                  }
-                }}
-                className="text-xs text-slate-500 hover:text-white underline"
-              >
-                Załaduj dane testowe
-              </button>
-            </div>
-          </details>
         </div>
       </main>
     );

@@ -8,6 +8,8 @@ import {
     signOut as firebaseSignOut,
     GoogleAuthProvider,
     signInWithPopup,
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
 } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
@@ -22,6 +24,8 @@ interface AuthContextType {
     setRole: (role: UserRole) => void;
     loginAsDemoSponsor: () => Promise<void>;
     loginGoogle: () => Promise<void>;
+    loginWithEmail: (email: string, pass: string) => Promise<void>;
+    registerWithEmail: (email: string, pass: string, name: string) => Promise<void>;
     logout: () => Promise<void>;
     isDemoConfigured: boolean;
 }
@@ -118,6 +122,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             throw error;
         }
     }
+    const loginWithEmail = async (email: string, pass: string) => {
+        if (!auth) return;
+        try {
+            await signInWithEmailAndPassword(auth, email, pass);
+        } catch (error) {
+            console.error("Login Error:", error);
+            throw error;
+        }
+    };
+
+    const registerWithEmail = async (email: string, pass: string, name: string) => {
+        if (!auth) return;
+        try {
+            const result = await createUserWithEmailAndPassword(auth, email, pass);
+            // Create user doc
+            if (db && result.user) {
+                await setDoc(doc(db, "users", result.user.uid), {
+                    uid: result.user.uid,
+                    email: result.user.email,
+                    displayName: name,
+                    role: userRole,
+                    createdAt: new Date()
+                });
+            }
+        } catch (error) {
+            console.error("Register Error:", error);
+            throw error;
+        }
+    };
 
     const logout = async () => {
         if (!isDemoConfigured || !auth) {
@@ -136,6 +169,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setRole,
             loginAsDemoSponsor,
             loginGoogle,
+            loginWithEmail,
+            registerWithEmail,
             logout,
             isDemoConfigured
         }}>
