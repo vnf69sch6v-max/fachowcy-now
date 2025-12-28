@@ -10,6 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Booking, BookingStatus, bookingConverter } from "@/types/firestore-v2";
 import { AvailabilityEditor } from "@/components/pro/AvailabilityEditor";
 import { SubscriptionPlans } from "@/components/features/SubscriptionPlans";
+import { ProposalModal } from "@/components/features/ProposalModal";
 
 // Interface for job request display
 interface JobRequest {
@@ -501,6 +502,7 @@ export function ProDashboard() {
 function JobBoardList() {
     const [jobs, setJobs] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedJob, setSelectedJob] = useState<any | null>(null);
 
     useEffect(() => {
         import("@/lib/job-service").then(({ JobService }) => {
@@ -525,40 +527,59 @@ function JobBoardList() {
     );
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {jobs.map(job => (
-                <div key={job.id} className="bg-slate-800/50 border border-white/5 rounded-2xl p-5 hover:border-violet-500/30 transition-all group">
-                    <div className="flex justify-between items-start mb-3">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-lg">
-                                👤
+        <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {jobs.map(job => (
+                    <div key={job.id} className="bg-slate-800/50 border border-white/5 rounded-2xl p-5 hover:border-violet-500/30 transition-all group">
+                        <div className="flex justify-between items-start mb-3">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-lg">
+                                    👤
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-white">{job.title}</h3>
+                                    <p className="text-xs text-violet-400 font-medium">{job.category}</p>
+                                </div>
                             </div>
+                            <span className="text-xs text-slate-500 font-mono bg-black/20 px-2 py-1 rounded">
+                                {job.location?.address?.split(',')[0]}
+                            </span>
+                        </div>
+
+                        <p className="text-slate-400 text-sm line-clamp-2 mb-4 bg-black/20 p-3 rounded-xl">
+                            {job.description}
+                        </p>
+
+                        <div className="flex items-center justify-between mt-auto">
                             <div>
-                                <h3 className="font-bold text-white">{job.title}</h3>
-                                <p className="text-xs text-violet-400 font-medium">{job.category}</p>
+                                <p className="text-xs text-slate-500">Budżet</p>
+                                <p className="font-bold text-white">{job.priceEstimate?.min} - {job.priceEstimate?.max} PLN</p>
                             </div>
+                            <button
+                                onClick={() => setSelectedJob(job)}
+                                className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold rounded-xl transition-colors shadow-lg shadow-violet-900/20"
+                            >
+                                Złóż ofertę
+                            </button>
                         </div>
-                        <span className="text-xs text-slate-500 font-mono bg-black/20 px-2 py-1 rounded">
-                            {job.location?.address?.split(',')[0]}
-                        </span>
                     </div>
+                ))}
+            </div>
 
-                    <p className="text-slate-400 text-sm line-clamp-2 mb-4 bg-black/20 p-3 rounded-xl">
-                        {job.description}
-                    </p>
-
-                    <div className="flex items-center justify-between mt-auto">
-                        <div>
-                            <p className="text-xs text-slate-500">Budżet</p>
-                            <p className="font-bold text-white">{job.priceEstimate?.min} - {job.priceEstimate?.max} PLN</p>
-                        </div>
-                        <button className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold rounded-xl transition-colors shadow-lg shadow-violet-900/20">
-                            Złóż ofertę
-                        </button>
-                    </div>
-                </div>
-            ))}
-        </div>
+            {/* Proposal Modal */}
+            {selectedJob && (
+                <ProposalModal
+                    isOpen={!!selectedJob}
+                    onClose={() => setSelectedJob(null)}
+                    job={selectedJob}
+                    onSuccess={(proposalId) => {
+                        console.log('Proposal submitted:', proposalId);
+                        setSelectedJob(null);
+                        // Could show a toast or refresh jobs list
+                    }}
+                />
+            )}
+        </>
     );
 }
 

@@ -10,6 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Booking, BookingStatus } from "@/types/firestore-v2";
 import { bookingConverter } from "@/types/firestore-v2";
 import { ReviewModal } from "./ReviewModal";
+import { ProposalsListModal } from "./ProposalsListModal";
 
 // Display Interface (simplified for UI)
 interface ActiveBookingDisplay {
@@ -210,6 +211,9 @@ export function ClientDashboard({ onLocationSelect, onChatOpen }: {
         hostName: string;
     } | null>(null);
 
+    // State for Proposals Modal
+    const [selectedJobForProposals, setSelectedJobForProposals] = useState<any | null>(null);
+
     useEffect(() => {
         if (!user || !db) return;
 
@@ -343,8 +347,11 @@ export function ClientDashboard({ onLocationSelect, onChatOpen }: {
                                     </div>
 
                                     <div className="flex gap-2">
-                                        <button className="flex-1 py-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold rounded-xl transition-colors">
-                                            Zobacz oferty
+                                        <button
+                                            onClick={() => setSelectedJobForProposals(job)}
+                                            className="flex-1 py-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold rounded-xl transition-colors"
+                                        >
+                                            Zobacz oferty ({job.proposalIds?.length || 0})
                                         </button>
                                         <button className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl transition-colors">
                                             Edytuj
@@ -367,6 +374,15 @@ export function ClientDashboard({ onLocationSelect, onChatOpen }: {
                     hostId={reviewTarget.hostId}
                     hostName={reviewTarget.hostName}
                     onSuccess={() => setReviewTarget(null)}
+                />
+            )}
+
+            {/* Proposals List Modal */}
+            {selectedJobForProposals && (
+                <ProposalsListModal
+                    isOpen={!!selectedJobForProposals}
+                    onClose={() => setSelectedJobForProposals(null)}
+                    job={selectedJobForProposals}
                 />
             )}
         </>

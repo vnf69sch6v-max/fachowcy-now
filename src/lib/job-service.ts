@@ -143,4 +143,20 @@ export class JobService {
             return [];
         }
     }
+
+    /**
+     * Get proposals for a specific job
+     */
+    static async getJobProposals(jobId: string): Promise<JobProposal[]> {
+        if (!db) return [];
+
+        try {
+            const proposalsRef = collection(db, 'jobs', jobId, 'proposals');
+            const snap = await getDocs(proposalsRef);
+            return snap.docs.map(d => ({ id: d.id, ...d.data() } as JobProposal));
+        } catch (error) {
+            console.error("Error fetching proposals:", error);
+            return [];
+        }
+    }
 }
