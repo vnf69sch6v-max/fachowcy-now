@@ -40,9 +40,9 @@ function MessageBubble({ message, isOwn }: { message: Message; isOwn: boolean })
                         : "bg-slate-800 text-white rounded-bl-md"
                 )}
             >
-                {!isOwn && (
+                {!isOwn && message.senderRole !== 'system' && (
                     <p className="text-xs text-violet-400 font-medium mb-1">
-                        {message.senderName}
+                        {message.senderName || 'Użytkownik'}
                     </p>
                 )}
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">

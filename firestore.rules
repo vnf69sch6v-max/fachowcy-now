@@ -50,8 +50,7 @@ service cloud.firestore {
           request.resource.data.assignedProId == request.auth.uid &&
           isUnchanged('clientId') && 
           isUnchanged('title') && 
-          isUnchanged('description') &&
-          isUnchanged('budget')
+          isUnchanged('description')
         )
         
         ||
@@ -162,8 +161,10 @@ service cloud.firestore {
       // Messages subcollection
       match /messages/{messageId} {
         allow read: if request.auth != null;
-        allow create: if request.auth != null &&
-          request.resource.data.senderId == request.auth.uid;
+        allow create: if request.auth != null && 
+          (request.resource.data.senderId == request.auth.uid || 
+           request.resource.data.senderId == 'system' ||
+           request.resource.data.senderRole == 'system');
       }
     }
   }

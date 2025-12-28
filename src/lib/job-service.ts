@@ -11,7 +11,8 @@ import {
     Timestamp,
     runTransaction,
     arrayUnion,
-    Firestore
+    Firestore,
+    onSnapshot
 } from "firebase/firestore";
 import { Job, JobProposal, JobStatus } from "@/types/firestore-v2";
 
@@ -296,6 +297,29 @@ export class JobService {
             console.error("Error fetching open jobs:", error);
             return [];
         }
+    }
+
+    /**
+     * Subscribe to open jobs (real-time for professionals)
+     */
+    static subscribeToOpenJobs(callback: (jobs: Job[]) => void): () => void {
+        if (!db) {
+            callback([]);
+            return () => { };
+        }
+
+        const q = query(
+            collection(db as Firestore, 'jobs'),
+            where('status', '==', 'open')
+        );
+
+        return onSnapshot(q, (snapshot) => {
+            const jobs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Job));
+            callback(jobs);
+        }, (error) => {
+            console.error("Error subscribing to open jobs:", error);
+            callback([]);
+        });
     }
 
     /**

@@ -505,12 +505,18 @@ function JobBoardList() {
     const [selectedJob, setSelectedJob] = useState<any | null>(null);
 
     useEffect(() => {
+        let unsubscribe: () => void;
+        
         import("@/lib/job-service").then(({ JobService }) => {
-            JobService.getOpenJobs().then(fetchedJobs => {
+            unsubscribe = JobService.subscribeToOpenJobs((fetchedJobs) => {
                 setJobs(fetchedJobs);
                 setLoading(false);
             });
         });
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
     }, []);
 
     if (loading) return (
