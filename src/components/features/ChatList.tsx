@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChatService } from "@/lib/chat-service";
-import { ChatRoom } from "@/types/chat";
+import { ChatService, Chat } from "@/lib/chat-service";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 import { Loader2, MessageSquare, Briefcase } from "lucide-react";
@@ -31,14 +30,14 @@ function formatTimeAgo(date: any) {
 
 export function ChatList({ onSelectChat, selectedChatId }: ChatListProps) {
     const { user, userRole } = useAuth();
-    const [chats, setChats] = useState<ChatRoom[]>([]);
+    const [chats, setChats] = useState<Chat[]>([]);
     const [loading, setLoading] = useState(true);
     const router = useRouter();
 
     useEffect(() => {
         if (!user) return;
 
-        const unsubscribe = ChatService.getChatsForUser(user.uid, (updatedChats) => {
+        const unsubscribe = ChatService.subscribeToUserChats(user.uid, (updatedChats) => {
             setChats(updatedChats);
             setLoading(false);
         });
@@ -46,7 +45,7 @@ export function ChatList({ onSelectChat, selectedChatId }: ChatListProps) {
         return () => unsubscribe();
     }, [user]);
 
-    const handleChatClick = (chat: ChatRoom) => {
+    const handleChatClick = (chat: Chat) => {
         if (onSelectChat) {
             onSelectChat(chat.id);
         }
@@ -77,7 +76,8 @@ export function ChatList({ onSelectChat, selectedChatId }: ChatListProps) {
 
                 // Determine other party details
                 const otherName = userRole === 'client' ? chat.professionalName : chat.clientName;
-                const otherImage = userRole === 'client' ? chat.professionalImageUrl : chat.clientImageUrl;
+                // No image URLs in new Chat type - use initials
+                const initial = otherName?.[0]?.toUpperCase() || '?';
 
                 // Get unread count for current user
                 const unreadCount = userRole === 'client'
@@ -96,13 +96,9 @@ export function ChatList({ onSelectChat, selectedChatId }: ChatListProps) {
                         )}
                     >
                         <div className="relative">
-                            {/* Avatar Fallback */}
+                            {/* Avatar with Initial */}
                             <div className="h-12 w-12 rounded-full border border-white/10 overflow-hidden bg-slate-800 flex items-center justify-center">
-                                {otherImage ? (
-                                    <img src={otherImage} alt={otherName} className="h-full w-full object-cover" />
-                                ) : (
-                                    <span className="text-lg font-bold text-white/50">{otherName?.[0] || "?"}</span>
-                                )}
+                                <span className="text-lg font-bold text-white/50">{initial}</span>
                             </div>
                         </div>
 
@@ -135,13 +131,12 @@ export function ChatList({ onSelectChat, selectedChatId }: ChatListProps) {
                                 )}
                             </div>
 
-                            {chat.status && chat.status !== 'inquiry' && (
+                            {chat.status && chat.status !== 'open' && (
                                 <div className="mt-1 flex items-center gap-1.5">
                                     <div className="text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/5 text-slate-300">
                                         {/* Status Label Mapping */}
-                                        {chat.status === 'quoted' && 'Wyceniono'}
+                                        {chat.status === 'negotiating' && 'Negocjacje'}
                                         {chat.status === 'accepted' && 'Zaakceptowano'}
-                                        {chat.status === 'in_progress' && 'W trakcie'}
                                         {chat.status === 'completed' && 'Zakończone'}
                                     </div>
                                 </div>
