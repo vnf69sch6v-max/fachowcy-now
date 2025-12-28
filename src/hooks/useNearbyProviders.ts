@@ -12,6 +12,7 @@ import {
 import * as geofire from 'geofire-common';
 import { db } from '@/lib/firebase';
 import { MapMarker } from '@/types/firestore-v2';
+import { useDebounce } from './useDebounce';
 
 export interface NearbyProvider extends MapMarker {
     distance: number; // km
@@ -28,20 +29,23 @@ export function useNearbyProviders({ center, radiusKm, category }: UseNearbyProv
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const debouncedCenter = useDebounce(center, 500);
+    const debouncedRadius = useDebounce(radiusKm, 500);
+
     useEffect(() => {
         const firestore = db;
-        if (!center || !firestore) return;
+        if (!debouncedCenter || !firestore) return;
 
         let isMounted = true;
         setLoading(true);
 
         const fetchProviders = async () => {
             try {
-                const centerLat = center.lat;
-                const centerLng = center.lng;
+                const centerLat = debouncedCenter.lat;
+                const centerLng = debouncedCenter.lng;
 
                 // 1. Calculate geohash bounds
-                const bounds = geofire.geohashQueryBounds([centerLat, centerLng], radiusKm * 1000);
+                const bounds = geofire.geohashQueryBounds([centerLat, centerLng], debouncedRadius * 1000);
                 const promises = [];
 
                 for (const b of bounds) {
@@ -79,7 +83,7 @@ export function useNearbyProviders({ center, radiusKm, category }: UseNearbyProv
                             [centerLat, centerLng]
                         );
 
-                        if (distanceInKm <= radiusKm) {
+                        if (distanceInKm <= debouncedRadius) {
                             results.push({
                                 ...data,
                                 distance: distanceInKm
@@ -109,7 +113,7 @@ export function useNearbyProviders({ center, radiusKm, category }: UseNearbyProv
         return () => {
             isMounted = false;
         };
-    }, [center?.lat, center?.lng, radiusKm, category]);
+    }, [debouncedCenter, debouncedRadius, category]);
 
     return { providers, loading, error };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { Map as GoogleMap, useMap } from "@vis.gl/react-google-maps";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { collection, query, onSnapshot, Firestore, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { MarkerClusterer } from "@googlemaps/markerclusterer";
@@ -212,10 +212,11 @@ function OnlineMap({ onSelectPro, categoryFilter, centerLocation, userRole, fitB
         if (userRole === 'professional') {
             // PROFESSIONAL VIEW: Fetch OPEN JOBS from 'jobs' collection
             // Showing available jobs in the area
-            const jobsQuery = query(
+            // Memoize query to prevent re-subscribing on every render
+            const jobsQuery = useMemo(() => query(
                 collection(db as Firestore, "jobs"),
                 where("status", "==", "open")
-            );
+            ), []); // Empty dependency array as query is static for now
 
             const unsubscribe = onSnapshot(jobsQuery, (snapshot) => {
                 const jobs: Professional[] = [];
