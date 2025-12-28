@@ -3,6 +3,7 @@ import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 import { categorizeRequest } from "./lib/ai";
+export { mediatorAgent } from './chatAi'; // Export the Vertex AI Mediator
 
 admin.initializeApp();
 

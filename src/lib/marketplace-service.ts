@@ -32,9 +32,7 @@ export async function publishJobRequest(input: PublishJobInput): Promise<{ succe
         // Generate geohash
         const hash = geofire.geohashForLocation([input.location.lat, input.location.lng]);
 
-        const jobId = await JobService.createJob({
-            clientId: input.clientId,
-            clientName: input.clientName,
+        const result = await JobService.createJobWithChat({
             title: `${input.category} - ${input.location.address.split(',')[0]}`, // Auto-generate title
             description: input.description,
             category: input.category as ServiceType,
@@ -47,10 +45,10 @@ export async function publishJobRequest(input: PublishJobInput): Promise<{ succe
             urgency: urgencyMap[input.urgency] || 'flexible',
 
             source: 'ai_chat'
-        });
+        }, input.clientId, input.clientName);
 
-        if (jobId) {
-            return { success: true, jobId };
+        if (result && result.jobId) {
+            return { success: true, jobId: result.jobId };
         } else {
             return { success: false, error: 'Failed to create job document' };
         }

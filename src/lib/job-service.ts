@@ -8,14 +8,92 @@ import {
     where,
     getDocs,
     serverTimestamp,
-    Timestamp
+    Timestamp,
+    runTransaction,
+    arrayUnion,
+    Firestore
 } from "firebase/firestore";
 import { Job, JobProposal, JobStatus } from "@/types/firestore-v2";
 
 export class JobService {
 
     /**
-     * Create a new job request
+     * Atomically creates a Job and a linked Chat thread.
+     * Guarantees that neither exists without the other (Genesis Transaction).
+     */
+    static async createJobWithChat(
+        jobData: Omit<Job, 'id' | 'createdAt' | 'updatedAt' | 'expiresAt' | 'proposalIds' | 'status' | 'chatId' | 'clientId' | 'clientName'>,
+        clientId: string,
+        clientName: string
+    ): Promise<{ jobId: string; chatId: string } | null> {
+        if (!db) return null;
+
+        // 1. Reserve IDs client-side
+        const jobRef = doc(collection(db as Firestore, 'jobs'));
+        const chatRef = doc(collection(db as Firestore, 'chats'));
+
+        try {
+            await runTransaction(db as Firestore, async (transaction) => {
+                const now = serverTimestamp();
+                const expiresAt = new Date();
+                expiresAt.setDate(expiresAt.getDate() + 7);
+
+                // 2. Prepare Job Payload with cross-reference
+                const finalJob = {
+                    ...jobData,
+                    status: 'open',
+                    proposalIds: [],
+                    chatId: chatRef.id,        // Link to Chat
+                    clientId,
+                    clientName,
+                    createdAt: now,
+                    updatedAt: now,
+                    expiresAt: Timestamp.fromDate(expiresAt),
+                    _lock: null                 // Optimistic lock field
+                };
+
+                // 3. Prepare Chat Payload with cross-reference
+                const initialChat = {
+                    id: chatRef.id,
+                    jobId: jobRef.id,          // Link to Job
+                    clientId,
+                    clientName,
+                    participantIds: [clientId], // Initially only client
+                    status: 'active',           // Active for AI/System messages
+                    isActive: true,
+                    lastMessage: 'Zlecenie utworzone. Oczekiwanie na oferty.',
+                    lastMessageAt: now,
+                    createdAt: now,
+                    updatedAt: now,
+                    unreadCount: { client: 0, professional: 0 }
+                };
+
+                // 4. Atomic Write
+                transaction.set(jobRef, finalJob);
+                transaction.set(chatRef, initialChat);
+
+                // 5. Initial System Message
+                const msgRef = doc(collection(db as Firestore, `chats/${chatRef.id}/messages`));
+                transaction.set(msgRef, {
+                    content: '📋 Zlecenie zostało utworzone i jest widoczne dla fachowców.',
+                    senderId: 'system',
+                    senderRole: 'system',
+                    type: 'system',
+                    createdAt: now
+                });
+            });
+
+            console.log("Atomic Genesis Transaction successful.");
+            return { jobId: jobRef.id, chatId: chatRef.id };
+
+        } catch (error) {
+            console.error("Genesis Transaction FAILED:", error);
+            return null;
+        }
+    }
+
+    /**
+     * Create a new job request (Legacy - prefer createJobWithChat)
      */
     static async createJob(jobData: Omit<Job, 'id' | 'createdAt' | 'updatedAt' | 'expiresAt' | 'proposalIds' | 'status'> & { status?: JobStatus }): Promise<string | null> {
         if (!db) return null;
@@ -75,7 +153,82 @@ export class JobService {
     }
 
     /**
-     * Accept a proposal
+     * Accept a proposal transactionally (Double Booking Fix)
+     */
+    static async acceptProposalAtomic(
+        jobId: string,
+        proposalId: string,
+        providerId: string,
+        providerName: string
+    ): Promise<{ success: boolean; error?: string }> {
+        if (!db) return { success: false, error: 'DB not initialized' };
+
+        const jobRef = doc(db as Firestore, 'jobs', jobId);
+        const proposalRef = doc(db as Firestore, 'jobs', jobId, 'proposals', proposalId);
+
+        try {
+            await runTransaction(db as Firestore, async (transaction) => {
+                // 1. READ: Get current state
+                const jobSnap = await transaction.get(jobRef);
+                const proposalSnap = await transaction.get(proposalRef);
+
+                if (!jobSnap.exists() || !proposalSnap.exists()) {
+                    throw new Error('Job or Proposal not found');
+                }
+
+                // 2. LOGIC GATE: Check if status allows acceptance
+                const currentStatus = jobSnap.data().status;
+                if (currentStatus !== 'open') {
+                    throw new Error(`Job already ${currentStatus}. Cannot accept.`);
+                }
+
+                // 3. WRITE: Commit changes
+                transaction.update(jobRef, {
+                    status: 'accepted',
+                    assignedProId: providerId,
+                    assignedProName: providerName,
+                    acceptedAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                });
+
+                transaction.update(proposalRef, {
+                    status: 'accepted',
+                    acceptedAt: serverTimestamp()
+                });
+
+                // 4. Update linked chat to include professional
+                const chatId = jobSnap.data().chatId;
+                if (chatId) {
+                    const chatRef = doc(db as Firestore, 'chats', chatId);
+                    transaction.update(chatRef, {
+                        professionalId: providerId,
+                        professionalName: providerName,
+                        participantIds: arrayUnion(providerId), // Add pro to participants
+                        status: 'active',
+                        updatedAt: serverTimestamp()
+                    });
+                    // Add system message to chat
+                    const msgRef = doc(collection(db as Firestore, `chats/${chatId}/messages`));
+                    transaction.set(msgRef, {
+                        content: `🤝 Oferta fachowca ${providerName} została zaakceptowana.`,
+                        senderId: 'system',
+                        senderRole: 'system',
+                        type: 'system',
+                        createdAt: serverTimestamp()
+                    });
+                }
+            });
+
+            return { success: true };
+
+        } catch (error: any) {
+            console.error("Accept Proposal Transaction FAILED:", error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Accept a proposal (Legacy)
      */
     static async acceptProposal(jobId: string, proposalId: string): Promise<boolean> {
         if (!db) return false;

@@ -2,6 +2,97 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
+    // ═══════════════════════════════════════════
+    // HELPER FUNCTIONS
+    // ═══════════════════════════════════════════
+    
+    function isUnchanged(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+    
+    function isStatusTransition(from, to) {
+      return resource.data.status == from && request.resource.data.status == to;
+    }
+    
+    function onlyUpdating(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+    
+    function isOwner() {
+      return request.auth.uid == resource.data.clientId;
+    }
+    
+    function isAssignedPro() {
+      return request.auth.uid == resource.data.assignedProId;
+    }
+
+    // ═══════════════════════════════════════════
+    // JOBS COLLECTION - State Machine
+    // ═══════════════════════════════════════════
+    
+    match /jobs/{jobId} {
+      // READ: Dostęp dla uczestników lub publiczny dla 'open'
+      allow read: if resource.data.status == 'open' || 
+                     request.auth.uid == resource.data.clientId ||
+                     request.auth.uid == resource.data.assignedProId;
+      
+      // CREATE: Tylko zalogowani, tylko status 'open'
+      allow create: if request.auth != null 
+                    && request.resource.data.status == 'open'
+                    && request.resource.data.clientId == request.auth.uid;
+      
+      // UPDATE: Złożona maszyna stanów
+      allow update: if request.auth != null && (
+        
+        // SCENARIUSZ 1: Fachowiec akceptuje (open -> accepted)
+        (
+          isStatusTransition('open', 'accepted') &&
+          request.resource.data.assignedProId == request.auth.uid &&
+          isUnchanged('clientId') && 
+          isUnchanged('title') && 
+          isUnchanged('description') &&
+          isUnchanged('budget')
+        )
+        
+        ||
+        
+        // SCENARIUSZ 2: Klient anuluje (open -> cancelled)
+        (
+          isStatusTransition('open', 'cancelled') &&
+          isOwner()
+        )
+        
+        ||
+        
+        // SCENARIUSZ 3: Fachowiec kończy (accepted -> completed)
+        (
+          isStatusTransition('accepted', 'completed') &&
+          isAssignedPro()
+        )
+        
+        ||
+        
+        // SCENARIUSZ 4: Klient potwierdza zakończenie
+        (
+          isStatusTransition('completed', 'confirmed') &&
+          isOwner()
+        )
+      );
+      
+      // PROPOSALS SUBCOLLECTION
+      match /proposals/{proposalId} {
+        allow read: if request.auth != null;
+        
+        allow create: if request.auth != null 
+                      && request.resource.data.providerId == request.auth.uid
+                      && request.resource.data.status == 'pending';
+        
+        // Tylko status może być zmieniony (przez transakcję z jobs)
+        allow update: if request.auth != null &&
+                      onlyUpdating(['status', 'acceptedAt']);
+      }
+    }
+    
     // Bookings - tylko dla uczestników
     match /bookings/{bookingId} {
       allow read: if request.auth != null && 

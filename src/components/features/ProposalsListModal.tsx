@@ -36,11 +36,19 @@ export function ProposalsListModal({ isOpen, onClose, job, onChatOpen }: Proposa
     }, [isOpen, job.id]);
 
     const handleAccept = async (proposal: JobProposal) => {
-        const success = await JobService.acceptProposal(job.id, proposal.id);
-        if (success) {
+        const result = await JobService.acceptProposalAtomic(
+            job.id,
+            proposal.id,
+            proposal.proId,
+            proposal.proName
+        );
+
+        if (result.success) {
             // Refresh proposals
             const updated = await JobService.getJobProposals(job.id);
             setProposals(updated);
+        } else {
+            console.error("Failed to accept proposal:", result.error);
         }
     };
 
@@ -53,13 +61,13 @@ export function ProposalsListModal({ isOpen, onClose, job, onChatOpen }: Proposa
         if (!user) return;
 
         try {
-            // Create or get existing chat
+            // Create or get existing chat (1:1 between client and pro)
             const chatId = await ChatService.createChat(
-                job.id,
                 user.uid,
-                user.displayName || "Klient",
                 proposal.proId,
-                proposal.proName
+                user.displayName || "Klient",
+                proposal.proName,
+                job.id // Passing job.id as bookingId context for now
             );
 
             if (chatId) {

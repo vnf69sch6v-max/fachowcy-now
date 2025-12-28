@@ -9,9 +9,9 @@ const vertexAI = new VertexAI({
 
 const model = vertexAI.getGenerativeModel({
     model: 'gemini-1.5-flash',
-    generation_config: {
-        response_mime_type: 'application/json'
-    } as any
+    generationConfig: {
+        responseMimeType: 'application/json'
+    }
 });
 
 interface AIResponse {
