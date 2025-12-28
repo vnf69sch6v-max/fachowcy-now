@@ -254,7 +254,23 @@ export default function Home() {
 
           <div className="flex flex-col gap-3">
             <button
-              onClick={loginGoogle}
+              type="button" // Prevent form submission if inside form (though it's outside)
+              onClick={async () => {
+                setAuthError("");
+                try {
+                  await loginGoogle();
+                } catch (error: any) {
+                  console.error("Google Login Catch:", error);
+                  // Translate common errors
+                  if (error?.code === 'auth/unauthorized-domain') {
+                    setAuthError("Domena nie jest autoryzowana w Firebase Console (Authentication -> Settings -> Authorized Domains).");
+                  } else if (error?.code === 'auth/popup-closed-by-user') {
+                    setAuthError("Okno logowania zostało zamknięte.");
+                  } else {
+                    setAuthError("Błąd logowania Google: " + (error.message || error));
+                  }
+                }
+              }}
               className="py-3 px-8 bg-white hover:bg-slate-100 text-slate-900 rounded-xl font-bold transition-transform active:scale-95 shadow-lg flex items-center justify-center gap-2"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
