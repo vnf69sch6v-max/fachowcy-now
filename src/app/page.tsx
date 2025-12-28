@@ -23,6 +23,7 @@ import { AIJobAssistant } from "@/components/features/AIJobAssistant";
 import { BookingModal } from "@/components/features/BookingModal";
 import { BottomTabBar, TabType } from "@/components/navigation/BottomTabBar";
 import { MessagesTab } from "@/components/features/MessagesTab";
+import { JobDetailsModal } from "@/components/features/JobDetailsModal";
 
 import { ProviderProfile } from "@/types/firestore";
 import { useClientLocation, useDirections, calculateStraightDistance, formatDistance, formatDuration } from "@/hooks/useDirections";
@@ -70,6 +71,7 @@ export default function Home() {
   const [mapCenter, setMapCenter] = useState<PlaceLocation | null>(null);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
+  const [jobForDetails, setJobForDetails] = useState<any>(null);
 
   const [fitBoundsLocations, setFitBoundsLocations] = useState<{ user: { lat: number; lng: number }; pro: { lat: number; lng: number } } | null>(null);
 
@@ -402,14 +404,22 @@ export default function Home() {
                         onChat={() => setActiveChatPro(selectedPro)}
                         onBook={() => {
                           if (userRole === 'professional') {
-                            // Pro clicked "Szczegóły" on a Job Pin
-                            setActiveTab('orders');
+                            // Pro clicked "Szczegóły" on a Job - open modal with job details
+                            setJobForDetails({
+                              id: selectedPro.id,
+                              title: selectedPro.profession,
+                              description: selectedPro.profession,
+                              category: selectedPro.profession,
+                              status: 'open',
+                              clientId: '',
+                              clientName: selectedPro.name,
+                              priceEstimate: { min: selectedPro.price * 0.8, max: selectedPro.price }
+                            });
                             setSelectedPro(null);
                           } else if (user) {
                             setBookingModalPro(selectedPro);
                           } else {
-                            // login prompt logic if needed or just redirect
-                            loginGoogle(); // Just basic usage
+                            loginGoogle();
                           }
                         }}
                       />
@@ -662,6 +672,19 @@ export default function Home() {
             setBookingModalPro(null);
             setSelectedPro(null);
             setActiveTab('orders');
+          }}
+        />
+      )}
+
+      {/* Job Details Modal for Professionals */}
+      {jobForDetails && (
+        <JobDetailsModal
+          isOpen={!!jobForDetails}
+          onClose={() => setJobForDetails(null)}
+          job={jobForDetails}
+          onStartChat={(chatId) => {
+            setJobForDetails(null);
+            setActiveTab('messages');
           }}
         />
       )}
