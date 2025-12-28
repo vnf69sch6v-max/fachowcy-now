@@ -178,11 +178,14 @@ service cloud.firestore {
       // Create: any authenticated user can create a chat
       allow create: if request.auth != null;
       
-      // Update: participants can update
+      // Update: participants can update, OR user is adding themselves as professional
       allow update: if request.auth != null && 
         (resource.data.clientId == request.auth.uid || 
          resource.data.professionalId == request.auth.uid ||
-         request.auth.uid in resource.data.participantIds);
+         request.auth.uid in resource.data.participantIds ||
+         // Allow professional to add themselves during job acceptance
+         (request.resource.data.professionalId == request.auth.uid &&
+          request.auth.uid in request.resource.data.participantIds));
       
       // Messages subcollection - simpler rules
       match /messages/{messageId} {
