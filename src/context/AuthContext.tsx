@@ -19,6 +19,7 @@ interface AuthContextType {
     loading: boolean;
     userRole: UserRole;
     toggleRole: () => void;
+    setRole: (role: UserRole) => void;
     loginAsDemoSponsor: () => Promise<void>;
     loginGoogle: () => Promise<void>;
     logout: () => Promise<void>;
@@ -44,6 +45,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Toggle between client and professional role
     const toggleRole = () => {
         setUserRole(prev => prev === 'client' ? 'professional' : 'client');
+    };
+
+    const setRole = (role: UserRole) => {
+        setUserRole(role);
     };
 
     useEffect(() => {
@@ -128,6 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             loading,
             userRole,
             toggleRole,
+            setRole,
             loginAsDemoSponsor,
             loginGoogle,
             logout,

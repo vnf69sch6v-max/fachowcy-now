@@ -2,13 +2,18 @@
 
 import { Map as GoogleMap, useMap } from "@vis.gl/react-google-maps";
 import { useEffect, useState, useRef } from "react";
-import { collection, query, onSnapshot, Firestore } from "firebase/firestore";
+import { collection, query, onSnapshot, Firestore, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { MarkerClusterer } from "@googlemaps/markerclusterer";
-import { PriceMarker } from "@/components/ui/PriceMarker";
+import { clusterRenderer } from "@/components/map/ClusterRenderer";
+import { FintechMarker, professionalToMarkerData } from "@/components/map/FintechMarker";
 import { Loader2 } from "lucide-react";
 import { MOCK_PROFESSIONALS } from "@/lib/mock-data";
 import { CategoryType, PlaceLocation } from "./SearchOverlay";
+import { UserLocationMarker } from "@/components/map/UserLocationMarker";
+import { useAuth } from "@/context/AuthContext";
+import { useLiveProviders } from "@/hooks/useLiveSearch";
+import { ServiceCategory } from "@/types/listings";
 
 // Types
 interface Professional {
@@ -19,6 +24,7 @@ interface Professional {
     rating: number;
     location: { lat: number; lng: number };
     imageUrl: string;
+    isPromoted?: boolean; // Golden pin for sponsors
     mockPosition?: { top: string; left: string }; // For offline map
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     [key: string]: any;
@@ -27,25 +33,9 @@ interface Professional {
 const POZNAN_CENTER = { lat: 52.4064, lng: 16.9252 };
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-// Dark Fintech Map Style used for Online Mode
-const MAP_STYLE = [
-    { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-    { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-    { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
-    { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
-    { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
-    { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#263c3f" }] },
-    { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#6b9a76" }] },
-    { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
-    { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
-    { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
-    { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#746855" }] },
-    { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1f2835" }] },
-    { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f3d19c" }] },
-    { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
-    { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
-    { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] }
-];
+// Fintech Night Map Style - imported from design system
+// Darker slate theme matching the app's bg-slate-950 aesthetic
+import MAP_STYLE from "@/styles/map-dark-theme.json";
 
 // Offline / Mock Map Component
 function MockMap({ onSelectPro, categoryFilter }: { onSelectPro?: (pro: Professional) => void; categoryFilter?: CategoryType }) {
@@ -91,22 +81,43 @@ function MockMap({ onSelectPro, categoryFilter }: { onSelectPro?: (pro: Professi
 }
 
 // Online Map Component (Architecture 2.0: Dual Collection)
-function OnlineMap({ onSelectPro, categoryFilter, centerLocation }: {
+function OnlineMap({ onSelectPro, categoryFilter, centerLocation, userRole, fitBoundsLocations, userLocation }: {
     onSelectPro?: (pro: Professional) => void;
     categoryFilter?: CategoryType;
     centerLocation?: PlaceLocation | null;
+    userRole?: 'client' | 'professional' | null;
+    fitBoundsLocations?: { user: { lat: number; lng: number }; pro: { lat: number; lng: number } } | null;
+    userLocation?: { lat: number; lng: number } | null;
 }) {
-    const [displayPros, setDisplayPros] = useState<Professional[]>([]);
+    const [displayItems, setDisplayItems] = useState<Professional[]>([]);
     const [loading, setLoading] = useState(true);
     const map = useMap();
 
-    // Pan map when centerLocation changes
+    // Pan map when centerLocation changes AND update searchOptions
     useEffect(() => {
         if (map && centerLocation) {
             map.panTo({ lat: centerLocation.lat, lng: centerLocation.lng });
             map.setZoom(13);
+
+            // IMPORTANT: Also update searchOptions to trigger provider fetch for new location
+            setSearchOptions({
+                center: { lat: centerLocation.lat, lng: centerLocation.lng },
+                radiusKm: 10 // Use larger radius when searching a city
+            });
         }
     }, [map, centerLocation]);
+
+    // Fit bounds to show both user and professional locations
+    useEffect(() => {
+        if (map && fitBoundsLocations) {
+            const bounds = new google.maps.LatLngBounds();
+            bounds.extend(fitBoundsLocations.user);
+            bounds.extend(fitBoundsLocations.pro);
+
+            // Smooth animation to fit bounds
+            map.fitBounds(bounds, { top: 150, bottom: 350, left: 50, right: 50 });
+        }
+    }, [map, fitBoundsLocations]);
 
     // Cache static profiles to avoid refetching: { [id]: Profile }
     const profilesCache = useRef<Map<string, any>>(new Map());
@@ -115,88 +126,167 @@ function OnlineMap({ onSelectPro, categoryFilter, centerLocation }: {
     const clustererRef = useRef<MarkerClusterer | null>(null);
     const markersRef = useRef<{ [key: string]: google.maps.marker.AdvancedMarkerElement | null }>({});
 
+    // Get current user for ID filtering
+    const { user } = useAuth();
+
+    // State for Search Options (Bound to Map View)
+    const [searchOptions, setSearchOptions] = useState<{ center: { lat: number, lng: number }, radiusKm: number } | null>(null);
+
+    // Initial load: Set default options based on user location or default center
     useEffect(() => {
-        if (!db) return;
-
-        let profilesUnsubscribe: (() => void) | undefined;
-        let statusUnsubscribe: (() => void) | undefined;
-
-        setLoading(true);
-
-        try {
-            // 1. Listen to Styles (Profiles)
-            const profilesQuery = query(collection(db as Firestore, "providers"));
-            profilesUnsubscribe = onSnapshot(profilesQuery, (snapshot) => {
-                snapshot.forEach(doc => {
-                    profilesCache.current.set(doc.id, doc.data());
-                });
+        if (!searchOptions) {
+            setSearchOptions({
+                center: userLocation || POZNAN_CENTER,
+                radiusKm: 5 // Start with 5km
             });
+        }
+    }, [userLocation]);
 
-            // 2. Listen to Live Statuses
-            const statusQuery = query(collection(db as Firestore, "provider_status"));
-            statusUnsubscribe = onSnapshot(statusQuery, (snapshot) => {
-                // Merge Status + Profile
-                const merged: Professional[] = [];
+    // Map UI Category to Backend Category
+    // UI: "Hydraulik" -> Backend: "hydraulik"
+    const mapCategoryToBackend = (uiCategory?: CategoryType): ServiceCategory | undefined => {
+        if (!uiCategory || uiCategory === "Wszyscy") return undefined;
 
-                snapshot.forEach(statusDoc => {
-                    const statusData = statusDoc.data();
-                    const profileData = profilesCache.current.get(statusDoc.id);
+        const mapping: Record<string, ServiceCategory> = {
+            "Hydraulik": "hydraulik",
+            "Elektryk": "elektryk",
+            "Sprzątanie": "sprzatanie",
+            "Malarz": "malarz",
+            "Stolarz": "stolarz",
+            "Klimatyzacja": "klimatyzacja",
+            "Ogrodnik": "ogrodnik",
+            "Przeprowadzki": "przeprowadzki",
+            "Złota Rączka": "zlota_raczka"
+        };
 
-                    if (profileData) {
-                        merged.push({
-                            id: statusDoc.id,
-                            name: profileData.displayName,
-                            profession: profileData.profession,
-                            price: profileData.basePrice,
-                            rating: profileData.rating,
-                            imageUrl: profileData.avatarUrl,
-                            // Use LIVE location if available, otherwise base
-                            location: statusData.currentLocation || profileData.baseLocation,
-                            status: statusData.isOnline ? 'online' : 'offline', // extra field
-                            isBusy: statusData.isBusy
+        return mapping[uiCategory] || "other";
+    };
+
+    // Let's use the hook
+    const { providers: liveProviders, isLoading: providersLoading } = useLiveProviders({
+        center: searchOptions?.center || POZNAN_CENTER,
+        radiusKm: searchOptions?.radiusKm || 5,
+        category: mapCategoryToBackend(categoryFilter)
+    });
+
+    // Debounce ref to prevent excessive queries
+    const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Debounce map movement to update search options
+    const onMapIdle = (map: google.maps.Map) => {
+        const center = map.getCenter();
+        const bounds = map.getBounds();
+        if (!center || !bounds) return;
+
+        const centerLat = center.lat();
+        const centerLng = center.lng();
+
+        // Calculate radius based on bounds (approximate)
+        const ne = bounds.getNorthEast();
+        const radiusInMeters = google.maps.geometry.spherical.computeDistanceBetween(center, ne);
+        const radiusKm = Math.min(Math.max(radiusInMeters / 1000, 1), 50); // Min 1km, Max 50km
+
+        // Debounce the update to avoid spamming Firestore
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+            setSearchOptions({
+                center: { lat: centerLat, lng: centerLng },
+                radiusKm: radiusKm
+            });
+        }, 500); // 500ms debounce
+    };
+
+    // Listen to map idle event
+    useEffect(() => {
+        if (!map) return;
+
+        const listener = map.addListener('idle', () => onMapIdle(map));
+        return () => {
+            listener.remove();
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+        };
+    }, [map]);
+
+    // Effect to update displayItems from liveProviders
+    useEffect(() => {
+        if (userRole === 'professional') {
+            // PROFESSIONAL VIEW: Fetch OPEN JOBS from 'jobs' collection
+            // Showing available jobs in the area
+            const jobsQuery = query(
+                collection(db as Firestore, "jobs"),
+                where("status", "==", "open")
+            );
+
+            const unsubscribe = onSnapshot(jobsQuery, (snapshot) => {
+                const jobs: Professional[] = [];
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+
+                    // Filter relevant jobs (client side geo filtering matching useLiveProviders logic ideally)
+                    // For now, simple fetch all open jobs
+
+                    if (data.location) {
+                        jobs.push({
+                            id: doc.id,
+                            name: data.category || "Zlecenie", // Use category as main title for marker
+                            profession: data.title || data.description?.substring(0, 20) || "Szczegóły",
+                            price: data.priceEstimate?.min || 0,
+                            rating: 0,
+                            imageUrl: data.photoUrls?.[0] || `https://api.dicebear.com/7.x/icons/svg?seed=${doc.id}`,
+                            location: { lat: data.location.lat, lng: data.location.lng },
+                            isPromoted: data.urgency === 'asap',
+                            status: 'online',
+                            isBusy: false,
+                            type: 'job_marker', // Signal to FintechMarker
+                            clientName: data.clientName // Extra data
                         } as Professional);
                     }
                 });
-
-                console.log(`[Map] Updated: ${merged.length} pros`);
-                setDisplayPros(merged);
+                setDisplayItems(jobs);
                 setLoading(false);
             });
+            return () => unsubscribe();
+        } else {
+            // CLIENT VIEW: Use liveProviders from hook
+            // Transform Provider data to Professional interface
+            const mappedProviders: Professional[] = liveProviders.map(p => ({
+                id: p.id,
+                name: p.displayName || p.title || 'Fachowiec',
+                profession: p.serviceType || 'other',
+                price: p.basePrice || 100,
+                rating: p.rating || 5.0,
+                imageUrl: p.avatarUrl || p.photoURL,
+                location: p.location,
+                isPromoted: p.isPromoted,
+                status: p.isOnline ? 'online' : 'offline',
+                isBusy: p.isBusy
+            }));
 
-        } catch (e) {
-            console.error("Map initialization error", e);
-            setLoading(false);
+            setDisplayItems(mappedProviders);
+            setLoading(providersLoading);
         }
-
-        return () => {
-            if (profilesUnsubscribe) profilesUnsubscribe();
-            if (statusUnsubscribe) statusUnsubscribe();
-        };
-    }, []);
+    }, [userRole, user, liveProviders, providersLoading]);
 
     // Initialize Clusterer
     useEffect(() => {
         if (!map) return;
         if (!clustererRef.current) {
-            clustererRef.current = new MarkerClusterer({ map });
+            clustererRef.current = new MarkerClusterer({ map, renderer: clusterRenderer });
         }
     }, [map]);
 
-    // Update Clusterer when professionals change
+    // Update Clusterer
     useEffect(() => {
         const clusterer = clustererRef.current;
         if (!clusterer) return;
-
         clusterer.clearMarkers();
-
-        // Add current markers
         const markers = Object.values(markersRef.current).filter((m): m is google.maps.marker.AdvancedMarkerElement => m !== null);
         clusterer.addMarkers(markers);
-    }, [displayPros]);
+    }, [displayItems]);
 
-    // Filter professionals by category
-    const filteredPros = displayPros.filter(pro =>
-        !categoryFilter || categoryFilter === "Wszyscy" || pro.profession === categoryFilter
+    // Filter items
+    const filteredItems = displayItems.filter(item =>
+        !categoryFilter || categoryFilter === "Wszyscy" || item.profession === categoryFilter
     );
 
     return (
@@ -210,15 +300,19 @@ function OnlineMap({ onSelectPro, categoryFilter, centerLocation }: {
                 styles={MAP_STYLE}
                 className="w-full h-full outline-none"
             >
-                {filteredPros.map(pro => (
-                    <PriceMarker
-                        key={pro.id}
-                        position={pro.location}
-                        price={pro.price}
-                        onClick={() => onSelectPro?.(pro)}
-                        ref={(el) => { markersRef.current[pro.id] = el; }}
+                {filteredItems.map(item => (
+                    <FintechMarker
+                        key={item.id}
+                        data={professionalToMarkerData(item)}
+                        onClick={(data) => onSelectPro?.(item)}
+                        isSelected={false}
                     />
                 ))}
+
+                {/* User Location Marker */}
+                {userLocation && (
+                    <UserLocationMarker position={userLocation} />
+                )}
             </GoogleMap>
 
             {loading && (
@@ -227,24 +321,23 @@ function OnlineMap({ onSelectPro, categoryFilter, centerLocation }: {
                 </div>
             )}
 
-            {/* Live Indicator */}
             <div className="absolute bottom-6 right-6 bg-emerald-500/90 text-white text-[10px] px-2 py-1 rounded-full shadow-lg font-bold backdrop-blur animate-pulse">
-                LIVE DATA
+                {userRole === 'professional' ? 'CLIENT ORDERS' : 'LIVE PROS'}
             </div>
         </div>
     );
 }
 
-export function MapOverview({ onSelectPro, categoryFilter, centerLocation }: {
+export function MapOverview({ onSelectPro, categoryFilter, centerLocation, userRole, fitBoundsLocations, userLocation }: {
     onSelectPro?: (pro: Professional) => void;
     categoryFilter?: CategoryType;
     centerLocation?: PlaceLocation | null;
+    userRole?: 'client' | 'professional' | null;
+    fitBoundsLocations?: { user: { lat: number; lng: number }; pro: { lat: number; lng: number } } | null;
+    userLocation?: { lat: number; lng: number } | null;
 }) {
-    // OFFLINE MODE
     if (!API_KEY) {
         return <div className="w-full h-full relative"><MockMap onSelectPro={onSelectPro} categoryFilter={categoryFilter} /></div>;
     }
-
-    // ONLINE MODE
-    return <OnlineMap onSelectPro={onSelectPro} categoryFilter={categoryFilter} centerLocation={centerLocation} />;
+    return <OnlineMap onSelectPro={onSelectPro} categoryFilter={categoryFilter} centerLocation={centerLocation} userRole={userRole} fitBoundsLocations={fitBoundsLocations} userLocation={userLocation} />;
 }

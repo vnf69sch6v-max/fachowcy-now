@@ -3,7 +3,7 @@
 import { SlidersHorizontal } from "lucide-react";
 import { PlacesAutocomplete } from "./PlacesAutocomplete";
 
-const CATEGORIES = ["Wszyscy", "Hydraulik", "Elektryk", "Sprzątanie", "Złota Rączka"] as const;
+export const CATEGORIES = ["Wszyscy", "Hydraulik", "Elektryk", "Sprzątanie", "Złota Rączka"] as const;
 export type CategoryType = typeof CATEGORIES[number];
 
 export interface PlaceLocation {
@@ -26,6 +26,7 @@ export function SearchOverlay({ activeCategory, onCategoryChange, onPlaceSelect,
             {isOnline && onPlaceSelect ? (
                 <PlacesAutocomplete
                     onPlaceSelect={onPlaceSelect}
+                    onCategoryChange={onCategoryChange}
                     placeholder="Czego szukasz? (np. Hydraulik Poznań)"
                 />
             ) : (

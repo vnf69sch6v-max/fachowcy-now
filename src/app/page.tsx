@@ -2,22 +2,30 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { useState, useEffect } from "react";
-import { Loader2, LayoutDashboard, Map as MapIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Loader2, LayoutDashboard, Map as MapIcon, LogOut, User as UserIcon, RefreshCw, Plus } from "lucide-react";
 import { MapProvider } from "@/components/features/MapProvider";
-import { MapOverview } from "@/components/features/MapOverview";
+import dynamic from "next/dynamic";
+import { RoutePolyline } from "@/components/map/RoutePolyline";
 import { SearchOverlay, CategoryType, PlaceLocation } from "@/components/features/SearchOverlay";
 import { ProCard } from "@/components/ui/ProCard";
 import { ChatWindow } from "@/components/features/ChatWindow";
 import { DashboardView } from "@/components/features/DashboardView";
 import { ClientDashboard } from "@/components/features/ClientDashboard";
 import { ProDashboard } from "@/components/features/ProDashboard";
-import { RoleSwitcher } from "@/components/ui/RoleSwitcher";
 import { AnimatePresence } from "framer-motion";
 import { seedFachowcy } from "@/lib/seedFachowcy";
-import { addDoc, collection } from "firebase/firestore";
+import { addDoc, collection, serverTimestamp, setDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { bookingConverter, generateBookingHash, BookingStatus } from "@/types/firestore-v2";
+import { ChatService } from "@/lib/chat-service";
+import { AIJobAssistant } from "@/components/features/AIJobAssistant";
+import { BookingModal } from "@/components/features/BookingModal";
+import { BottomTabBar, TabType } from "@/components/navigation/BottomTabBar";
+import { MessagesTab } from "@/components/features/MessagesTab";
 
 import { ProviderProfile } from "@/types/firestore";
+import { useClientLocation, useDirections, calculateStraightDistance, formatDistance, formatDuration } from "@/hooks/useDirections";
 
 // UI Professional Type (Mapped from Provider)
 interface Professional {
@@ -26,27 +34,102 @@ interface Professional {
   profession: string;
   price: number;
   rating: number;
+  reviewCount?: number;
   imageUrl: string;
   location: { lat: number; lng: number };
+  isPromoted?: boolean;
 }
 
+// Dynamic import to prevent SSR hydration errors with Google Maps
+const MapOverview = dynamic(() => import("@/components/features/MapOverview").then(mod => mod.MapOverview), {
+  ssr: false,
+  loading: () => <div className="w-full h-full bg-slate-900 flex items-center justify-center text-slate-500 animate-pulse">Ładowanie mapy...</div>
+});
+
+import { usePushNotifications } from "@/hooks/usePushNotifications";
+
 export default function Home() {
-  const { user, loginAsDemoSponsor, loginGoogle, loading, isDemoConfigured, userRole, toggleRole } = useAuth();
+  const { user, loading, userRole,
+    setRole,
+    toggleRole,
+    loginAsDemoSponsor,
+    loginGoogle,
+    logout
+  } = useAuth();
+
+  usePushNotifications(); // Init Push Notifications
+
+  const router = useRouter();
   const [selectedPro, setSelectedPro] = useState<Professional | null>(null);
   const [activeChatPro, setActiveChatPro] = useState<Professional | null>(null);
-  const [view, setView] = useState<"map" | "dashboard">("map");
+  const [bookingModalPro, setBookingModalPro] = useState<Professional | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>("map");
   const [activeCategory, setActiveCategory] = useState<CategoryType>("Wszyscy");
   const [mapCenter, setMapCenter] = useState<PlaceLocation | null>(null);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
+  const [fitBoundsLocations, setFitBoundsLocations] = useState<{ user: { lat: number; lng: number }; pro: { lat: number; lng: number } } | null>(null);
 
   // Check if we're in online mode (Google Maps API key present)
   const isOnline = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
 
-  // Auto-login for demo speed if not logged in
+  // Get client's current location
+  const { location: clientLocation } = useClientLocation();
+
+  // Calculate directions when a professional is selected
+  const directions = useDirections(
+    clientLocation,
+    selectedPro?.location || null
+  );
+
+  // Fallback distance calculation if Directions API not available
+  const fallbackDistance = selectedPro && clientLocation
+    ? calculateStraightDistance(clientLocation, selectedPro.location)
+    : null;
+
+  // Auto-redirect professionals to appropriate page (register or dashboard)
   useEffect(() => {
-    if (!loading && !user) {
-      // Optional
+    const checkProfileAndRedirect = async () => {
+      if (!loading && user && userRole === 'professional') {
+        // Check if we already redirected this session
+        const hasRedirected = sessionStorage.getItem('pro_redirected');
+        if (hasRedirected) return;
+
+        try {
+          // Check if user has a public profile (registered)
+          if (!db) {
+            router.push('/pro/register');
+            return;
+          }
+          const { doc, getDoc } = await import('firebase/firestore');
+          const profileRef = doc(db, 'public_profiles', user.uid);
+          const profileSnap = await getDoc(profileRef);
+
+          sessionStorage.setItem('pro_redirected', 'true');
+
+          if (profileSnap.exists()) {
+            // User is registered, go to dashboard
+            router.push('/pro/dashboard');
+          } else {
+            // New user, go to registration
+            router.push('/pro/register');
+          }
+        } catch (error) {
+          console.error('Error checking profile:', error);
+          // Fallback to register on error
+          sessionStorage.setItem('pro_redirected', 'true');
+          router.push('/pro/register');
+        }
+      }
+    };
+
+    checkProfileAndRedirect();
+
+    // Clear redirect flag when user logs out
+    if (!user) {
+      sessionStorage.removeItem('pro_redirected');
     }
-  }, [loading, user]);
+  }, [loading, user, userRole, router]);
 
   if (loading) {
     return (
@@ -72,12 +155,9 @@ export default function Home() {
           {/* Role Selection */}
           <div className="flex gap-3 justify-center">
             <button
-              onClick={() => {
-                toggleRole();
-                if (userRole !== 'client') toggleRole(); // ensure client
-              }}
-              className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${userRole === 'client'
-                ? 'bg-blue-500/20 border-blue-400/50 text-blue-100 shadow-[0_0_20px_rgba(59,130,246,0.3)]'
+              onClick={() => setRole('client')}
+              className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border transition-all active:scale-95 ${userRole === 'client'
+                ? 'bg-blue-500/20 border-blue-400/50 text-blue-100 shadow-[0_0_20px_rgba(59,130,246,0.3)] ring-1 ring-blue-500/50'
                 : 'bg-slate-800/50 border-white/10 text-slate-400 hover:bg-slate-700/50'
                 }`}
             >
@@ -86,12 +166,9 @@ export default function Home() {
               <span className="text-[10px] opacity-70">Szukam fachowca</span>
             </button>
             <button
-              onClick={() => {
-                toggleRole();
-                if (userRole !== 'professional') toggleRole(); // ensure professional
-              }}
-              className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${userRole === 'professional'
-                ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.3)]'
+              onClick={() => setRole('professional')}
+              className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border transition-all active:scale-95 ${userRole === 'professional'
+                ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.3)] ring-1 ring-emerald-500/50'
                 : 'bg-slate-800/50 border-white/10 text-slate-400 hover:bg-slate-700/50'
                 }`}
             >
@@ -163,7 +240,7 @@ export default function Home() {
 
       {/* Main Content Area */}
       <div className="flex-1 relative overflow-hidden">
-        {view === "map" ? (
+        {activeTab === "map" ? (
           <MapProvider>
             {/* Map Layer */}
             <div className="absolute inset-0 z-0">
@@ -171,6 +248,15 @@ export default function Home() {
                 onSelectPro={(pro) => setSelectedPro(pro)}
                 categoryFilter={activeCategory}
                 centerLocation={mapCenter}
+                userRole={userRole as 'client' | 'professional' | null}
+                fitBoundsLocations={fitBoundsLocations}
+                userLocation={clientLocation}
+              />
+              {/* Route Polyline (Uber-like) */}
+              <RoutePolyline
+                origin={clientLocation}
+                destination={selectedPro?.location || null}
+                isVisible={!!selectedPro}
               />
             </div>
 
@@ -183,8 +269,60 @@ export default function Home() {
                 isOnline={isOnline}
               />
 
-              {/* Bottom Card Area */}
-              <div className="p-4 md:p-8 flex justify-center md:justify-start md:items-end pointer-events-none mb-16 md:mb-0">
+              {/* Top Right User Menu - Positioned below search area */}
+              <div className="absolute top-24 right-4 z-50 pointer-events-auto">
+                <div className="relative">
+                  <button
+                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                    className="w-10 h-10 rounded-full bg-slate-900/80 backdrop-blur-md border border-white/10 flex items-center justify-center text-white shadow-lg hover:bg-slate-800 transition-colors"
+                  >
+                    <UserIcon className="w-5 h-5" />
+                  </button>
+
+                  <AnimatePresence>
+                    {isUserMenuOpen && (
+                      <div className="absolute top-12 right-0 w-64 bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl p-2 flex flex-col gap-1 overflow-hidden">
+                        <div className="px-3 py-2 border-b border-white/5 mb-1">
+                          <p className="text-white font-semibold text-sm">{user?.displayName || 'Użytkownik'}</p>
+                          <p className="text-xs text-slate-400 capitalize">{userRole === 'client' ? 'Klient' : 'Fachowiec'}</p>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            toggleRole();
+                            setIsUserMenuOpen(false);
+                            if (userRole === 'client') {
+                              // Switching TO Professional
+                              router.push('/pro/dashboard');
+                            } else {
+                              // Switching TO Client
+                              setActiveTab('map'); // Ensure we see map or dashboard
+                            }
+                          }}
+                          className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 text-sm transition-colors text-blue-300"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                          <span>Przełącz na {userRole === 'client' ? 'Fachowca' : 'Klienta'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            logout();
+                            setIsUserMenuOpen(false);
+                          }}
+                          className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-red-500/10 text-sm transition-colors text-red-400"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          <span>Wyloguj</span>
+                        </button>
+                      </div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+
+              {/* Bottom Card Area - Fixed at bottom, above nav bar */}
+              <div className="absolute bottom-20 left-4 right-4 md:left-8 md:right-auto z-20 pointer-events-none">
                 <AnimatePresence>
                   {selectedPro && (
                     <div className="pointer-events-auto">
@@ -193,102 +331,280 @@ export default function Home() {
                         profession={selectedPro.profession}
                         price={selectedPro.price}
                         rating={selectedPro.rating}
-                        timeAway="12 min"
+                        reviewCount={selectedPro.reviewCount}
+                        distance={directions.distance.text || (fallbackDistance ? formatDistance(fallbackDistance.distanceKm) : undefined)}
+                        duration={directions.duration.text || (fallbackDistance ? formatDuration(fallbackDistance.estimatedMinutes) : undefined)}
+                        isLoading={directions.isLoading}
+                        isPromoted={selectedPro.isPromoted}
                         imageUrl={selectedPro.imageUrl}
+                        variant={userRole === 'professional' ? 'job' : 'default'}
+                        onClose={() => setSelectedPro(null)}
                         onChat={() => setActiveChatPro(selectedPro)}
-                        onBook={async () => {
-                          if (db && user) {
-                            try {
-                              await addDoc(collection(db, "orders"), {
-                                clientId: user.uid,
-                                proId: selectedPro.id,
-                                proName: selectedPro.name,
-                                price: selectedPro.price,
-                                status: "pending",
-                                createdAt: new Date()
-                              });
-                              console.log("Order created!");
-                            } catch (e) { console.error("Booking error", e); }
+                        onBook={() => {
+                          if (userRole === 'professional') {
+                            // Pro clicked "Szczegóły" on a Job Pin
+                            setActiveTab('orders');
+                            setSelectedPro(null);
+                          } else if (user) {
+                            setBookingModalPro(selectedPro);
+                          } else {
+                            // login prompt logic if needed or just redirect
+                            loginGoogle(); // Just basic usage
                           }
-                          setView("dashboard");
                         }}
                       />
-                      <button
-                        onClick={() => setSelectedPro(null)}
-                        className="absolute top-2 right-2 text-white/50 hover:text-white"
-                      >
-                        ✕
-                      </button>
                     </div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Chat Window Layer */}
-              <div className="pointer-events-auto">
-                <AnimatePresence>
-                  {activeChatPro && (
-                    <ChatWindow
-                      proId={activeChatPro.id}
-                      proName={activeChatPro.name}
-                      proImage={activeChatPro.imageUrl}
-                      onClose={() => setActiveChatPro(null)}
-                    />
                   )}
                 </AnimatePresence>
               </div>
             </div>
           </MapProvider>
+
+
+          // ... existing imports ...
+
+          // Inside Home component render:
+        ) : activeTab === "assistant" ? (
+          /* Fullscreen AI Assistant View */
+          <div className="w-full h-full bg-slate-950 flex flex-col pb-20">
+            <AIJobAssistant
+              isOpen={true}
+              onClose={() => setActiveTab("map")}
+              onJobCreated={(jobId) => {
+                console.log('Job created:', jobId);
+                setActiveTab("orders");
+              }}
+              onViewProOnMap={(pro) => {
+                setSelectedPro({
+                  id: pro.id,
+                  name: pro.name,
+                  profession: pro.profession,
+                  price: pro.price,
+                  rating: pro.rating,
+                  reviewCount: pro.reviewCount,
+                  imageUrl: pro.imageUrl,
+                  location: pro.location,
+                  isPromoted: false
+                });
+                if (clientLocation) {
+                  setFitBoundsLocations({
+                    user: clientLocation,
+                    pro: pro.location
+                  });
+                }
+                setActiveTab("map");
+              }}
+              onOpenChat={(pro) => {
+                setActiveChatPro({
+                  id: pro.id,
+                  name: pro.name,
+                  profession: pro.profession,
+                  price: pro.price,
+                  rating: pro.rating,
+                  imageUrl: pro.imageUrl,
+                  location: pro.location
+                });
+              }}
+              fullscreen
+            />
+          </div>
+        ) : activeTab === "messages" ? (
+          /* Messages View */
+          <div className="w-full h-full bg-slate-950 pb-20 overflow-hidden">
+            <MessagesTab />
+          </div>
+        ) : activeTab === "orders" ? (
+          /* Orders/Dashboard View */
+          <div className="w-full h-full bg-slate-950 pb-20 overflow-y-auto">
+            <DashboardView onChatOpen={(pro) => setActiveChatPro(pro)} />
+          </div>
+        ) : activeTab === "profile" ? (
+          /* Profile View */
+          <div className="w-full h-full bg-slate-950 pb-20 overflow-y-auto">
+            <div className="max-w-md mx-auto p-6 pt-12">
+              <div className="text-center mb-8">
+                <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-3xl font-bold mb-4">
+                  {user?.displayName?.charAt(0) || user?.email?.charAt(0) || "U"}
+                </div>
+                <h2 className="text-xl font-bold text-white">{user?.displayName || "Użytkownik"}</h2>
+                <p className="text-slate-400 text-sm">{user?.email}</p>
+                <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 bg-slate-800 rounded-full text-xs text-slate-300">
+                  <span className={`w-2 h-2 rounded-full ${userRole === 'professional' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                  {userRole === 'professional' ? 'Fachowiec' : 'Klient'}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={() => toggleRole()}
+                  className="w-full p-4 bg-slate-800/50 hover:bg-slate-800 rounded-xl border border-white/10 text-left transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-white font-medium">Przełącz rolę</p>
+                      <p className="text-slate-400 text-sm">
+                        {userRole === 'professional' ? 'Przełącz na Klienta' : 'Przełącz na Fachowca'}
+                      </p>
+                    </div>
+                    <RefreshCw className="w-5 h-5 text-slate-400" />
+                  </div>
+                </button>
+
+                {userRole === 'professional' && (
+                  <button
+                    onClick={() => router.push('/pro/dashboard')}
+                    className="w-full p-4 bg-amber-500/10 hover:bg-amber-500/20 rounded-xl border border-amber-500/20 text-left transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-amber-400 font-medium">Panel Fachowca</p>
+                        <p className="text-slate-400 text-sm">Zarządzaj zleceniami i kalendarzem</p>
+                      </div>
+                      <LayoutDashboard className="w-5 h-5 text-amber-400" />
+                    </div>
+                  </button>
+                )}
+
+                <button
+                  onClick={logout}
+                  className="w-full p-4 bg-red-500/10 hover:bg-red-500/20 rounded-xl border border-red-500/20 text-left transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-red-400 font-medium">Wyloguj się</p>
+                      <p className="text-slate-400 text-sm">Zakończ sesję</p>
+                    </div>
+                    <LogOut className="w-5 h-5 text-red-400" />
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
         ) : (
-          <DashboardView />
+          <DashboardView onChatOpen={(pro) => setActiveChatPro(pro)} />
         )}
       </div>
 
-      {/* Navigation Bar (Glassmorphism) */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-full px-4 md:px-6 py-3 flex items-center gap-4 md:gap-6 shadow-2xl">
-        {/* Role Switcher */}
-        <RoleSwitcher />
-
-        <div className="w-px h-8 bg-white/10" />
-
-        <button
-          onClick={() => setView("map")}
-          className={`flex flex-col items-center gap-1 transition-colors ${view === 'map' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
-        >
-          <MapIcon className="w-5 h-5 md:w-6 md:h-6" />
-          <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider">Mapa</span>
-        </button>
-        <div className="w-px h-8 bg-white/10" />
-        <button
-          onClick={() => setView("dashboard")}
-          className={`flex flex-col items-center gap-1 transition-colors ${view === 'dashboard' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
-        >
-          <LayoutDashboard className="w-5 h-5 md:w-6 md:h-6" />
-          <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider">Pulpit</span>
-        </button>
+      {/* Global Chat Overlay (moved outside map view) */}
+      <div className="pointer-events-auto z-50">
+        <AnimatePresence>
+          {activeChatPro && (
+            <ChatWindow
+              proId={activeChatPro.id}
+              proName={activeChatPro.name}
+              proImage={activeChatPro.imageUrl}
+              onClose={() => setActiveChatPro(null)}
+            />
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Role-based Dashboard Overlays */}
-      <AnimatePresence>
-        {view === "map" && userRole === 'client' && (
-          <ClientDashboard
-            onOpenChat={(proId, proName, proImage) => setActiveChatPro({
-              id: proId,
-              name: proName,
-              profession: '',
-              price: 0,
-              rating: 0,
-              imageUrl: proImage,
-              location: { lat: 0, lng: 0 }
-            })}
-            onShowLocation={(lat, lng) => setMapCenter({ lat, lng, name: 'Lokalizacja zlecenia' })}
-            isChatOpen={!!activeChatPro}
-          />
-        )}
-        {view === "map" && userRole === 'professional' && (
-          <ProDashboard />
-        )}
-      </AnimatePresence>
+      {/* New Bottom Tab Bar */}
+      <BottomTabBar
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          if (tab === 'orders' && userRole === 'professional') {
+            router.push('/pro/dashboard');
+          } else {
+            setActiveTab(tab);
+          }
+        }}
+        userRole={userRole as 'client' | 'professional' | null}
+      />
+
+      {/* FAB Button - Add Job (Only for Clients) */}
+      {userRole === 'client' && activeTab === 'map' && (
+        <button
+          onClick={() => setIsAIAssistantOpen(true)}
+          className="fixed bottom-28 right-4 md:right-8 z-40 w-14 h-14 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 hover:from-violet-400 hover:to-indigo-500 shadow-2xl shadow-violet-500/30 flex items-center justify-center transition-all hover:scale-110 active:scale-95"
+        >
+          <Plus className="w-7 h-7 text-white" />
+        </button>
+      )}
+
+      {/* AI Job Assistant Modal */}
+      <AIJobAssistant
+        isOpen={isAIAssistantOpen}
+        onClose={() => setIsAIAssistantOpen(false)}
+        onJobCreated={(jobId) => {
+          console.log('Job created:', jobId);
+          setIsAIAssistantOpen(false);
+        }}
+        onViewProOnMap={(pro) => {
+          // Convert NearbyPro to Professional type and show on map
+          setSelectedPro({
+            id: pro.id,
+            name: pro.name,
+            profession: pro.profession,
+            price: pro.price,
+            rating: pro.rating,
+            reviewCount: pro.reviewCount,
+            imageUrl: pro.imageUrl,
+            location: pro.location,
+            isPromoted: false
+          });
+
+          // Fit map to show both user and professional
+          if (clientLocation) {
+            setFitBoundsLocations({
+              user: clientLocation,
+              pro: pro.location
+            });
+          }
+
+          setIsAIAssistantOpen(false);
+        }}
+        onOpenChat={(pro) => {
+          setIsAIAssistantOpen(false);
+          setActiveChatPro({
+            id: pro.id,
+            name: pro.name,
+            profession: pro.profession,
+            price: pro.price,
+            rating: pro.rating,
+            reviewCount: pro.reviewCount,
+            imageUrl: pro.imageUrl,
+            location: pro.location,
+            isPromoted: false
+          });
+        }}
+      />
+
+      {/* Role-based Dashboard Overlays - REMOVED FROM MAP VIEW 
+          Bookings now belong in the Zlecenia tab for cleaner UX */}
+
+      {/* Booking Modal (Direct from Map) */}
+      {bookingModalPro && (
+        <BookingModal
+          isOpen={!!bookingModalPro}
+          onClose={() => setBookingModalPro(null)}
+          professional={{
+            id: bookingModalPro.id,
+            name: bookingModalPro.name,
+            profession: bookingModalPro.profession,
+            price: bookingModalPro.price,
+            rating: bookingModalPro.rating,
+            reviewCount: bookingModalPro.reviewCount || 0,
+            imageUrl: bookingModalPro.imageUrl,
+            location: bookingModalPro.location,
+            distance: 0,
+            estimatedArrival: 10, // minutes
+            isVerified: true
+          }}
+          jobDescription="Rezerwacja bezpośrednia z mapy"
+          category={bookingModalPro.profession}
+          location={{
+            lat: bookingModalPro.location.lat,
+            lng: bookingModalPro.location.lng,
+            address: "Lokalizacja zlecenia"
+          }}
+          onSuccess={(id) => {
+            setBookingModalPro(null);
+            setSelectedPro(null);
+            setActiveTab('orders');
+          }}
+        />
+      )}
     </div>
   );
 }
