@@ -136,7 +136,7 @@ service cloud.firestore {
     // Providers - public profiles for professionals
     match /providers/{providerId} {
         allow read: if true;  // Public read for map display
-        allow create: if true;  // TEMPORARY: Allow seeding without auth
+        allow create: if request.auth != null;  // Authenticated users only
         allow update: if request.auth != null && request.auth.uid == providerId;
         allow delete: if request.auth != null && request.auth.uid == providerId;
     }
@@ -144,7 +144,7 @@ service cloud.firestore {
     // Provider Status - live location/status for professionals
     match /provider_status/{providerId} {
         allow read: if true;  // Public read for map display
-        allow create: if true;  // TEMPORARY: Allow seeding without auth
+        allow create: if request.auth != null;  // Authenticated users only
         allow update: if request.auth != null && request.auth.uid == providerId;
         allow delete: if request.auth != null && request.auth.uid == providerId;
     }
