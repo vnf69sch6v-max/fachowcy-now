@@ -155,14 +155,16 @@ export function ChatWindow({ proId, proName, proImage, proTrustScore = 85, onClo
     const [status, setStatus] = useState('inquiry');
 
     // Create a unique chat ID for this user-pro pair
-    const chatId = user ? ChatService.getChatId(user.uid, proId) : "demo";
+    const chatId = user ? `${user.uid}_${proId}` : "demo";
 
     useEffect(() => {
-        const unsubscribe = ChatService.subscribeToChat(chatId, (msgs) => {
+        if (!chatId || chatId === 'demo') return;
+
+        const unsubscribe = ChatService.subscribeToMessages(chatId, (msgs) => {
             setMessages(msgs);
             // Simulate AI checking for sensitive info (phone numbers)
             const lastMsg = msgs[msgs.length - 1];
-            const msgContent = lastMsg?.content || lastMsg?.text || "";
+            const msgContent = lastMsg?.content || "";
             if (msgContent && /\d{9}|\d{3}[-\s]\d{3}[-\s]\d{3}/.test(msgContent)) {
                 setSecurityWarning("Wykryto numer telefonu. Dla bezpieczeństwa zalecamy płatność przez aplikację (Gwarancja Satysfakcji).");
             } else {
@@ -190,11 +192,13 @@ export function ChatWindow({ proId, proName, proImage, proTrustScore = 85, onClo
 
         setInputText(""); // Optimistic clear
         if (user) {
-            // Updated to use the new content field structure and signature:
-            // (chatId, content, senderId, senderRole, type)
-            // Note: userRole should be 'client' | 'professional'
-            const role = userRole || 'client';
-            await ChatService.sendMessage(chatId, textToUse, user.uid, role);
+            const role = (userRole || 'client') as 'client' | 'professional';
+            await ChatService.sendMessage(chatId, {
+                content: textToUse,
+                senderId: user.uid,
+                senderName: user.displayName || 'Użytkownik',
+                senderRole: role
+            });
         }
     };
 
@@ -207,9 +211,13 @@ export function ChatWindow({ proId, proName, proImage, proTrustScore = 85, onClo
         // Send as system action message
         const systemMessage = label.replace(/[📍✅▶️⚠️💰📅]/g, '').trim().toUpperCase();
         if (user) {
-            // System messages still use text/content
-            const role = userRole || 'client';
-            await ChatService.sendMessage(chatId, `--- ${systemMessage} ---`, user.uid, role, 'system');
+            const role = (userRole || 'client') as 'client' | 'professional';
+            await ChatService.sendMessage(chatId, {
+                content: `--- ${systemMessage} ---`,
+                senderId: user.uid,
+                senderName: user.displayName || 'Użytkownik',
+                senderRole: role
+            });
 
             // Simulate status update based on action
             if (actionId === 'quote') setStatus('quoted');
@@ -260,7 +268,7 @@ export function ChatWindow({ proId, proName, proImage, proTrustScore = 85, onClo
                 {messages.map((msg) => {
                     const isMe = msg.senderId === user?.uid;
                     const isSystem = msg.type === 'system';
-                    const displayContent = msg.content || msg.text || "";
+                    const displayContent = msg.content || "";
 
                     if (isSystem) {
                         return (
