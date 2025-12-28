@@ -1,104 +1,233 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ChatList } from "./ChatList";
-import { ChatWindow } from "./ChatWindow";
-import { ChatRoom } from "@/types/chat";
-import { useMediaQuery } from "@/hooks/use-media-query";
-import { AnimatePresence, motion } from "framer-motion";
-import { useAuth } from "@/context/AuthContext"; // Assuming we have this
+import { motion, AnimatePresence } from "framer-motion";
+import { MessageSquare, Loader2 } from "lucide-react";
+import { ChatService, Chat } from "@/lib/chat-service";
+import { SimpleChatWindow } from "./SimpleChatWindow";
+import { useAuth } from "@/context/AuthContext";
+import { cn } from "@/lib/utils";
 
-export function MessagesTab() {
-    const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
-    const isDesktop = useMediaQuery("(min-width: 768px)");
+// Format relative time
+function formatTimeAgo(timestamp: any): string {
+    if (!timestamp) return '';
+    try {
+        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+        const diffMs = Date.now() - date.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+
+        if (diffMins < 1) return 'teraz';
+        if (diffMins < 60) return `${diffMins}m`;
+        if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h`;
+        return `${Math.floor(diffMins / 1440)}d`;
+    } catch {
+        return '';
+    }
+}
+
+// Chat List Item Component
+function ChatListItem({
+    chat,
+    isActive,
+    onClick,
+    userRole
+}: {
+    chat: Chat;
+    isActive: boolean;
+    onClick: () => void;
+    userRole: string;
+}) {
+    const otherName = userRole === 'client'
+        ? chat.professionalName || 'Fachowiec'
+        : chat.clientName || 'Klient';
+
+    const unreadCount = userRole === 'client'
+        ? chat.unreadCount?.client || 0
+        : chat.unreadCount?.professional || 0;
+
+    const initial = otherName?.[0]?.toUpperCase() || '?';
 
     return (
-        <div className="flex h-full w-full max-w-7xl mx-auto overflow-hidden">
-            {/* Chat List Sidebar */}
-            <div className={`
-                flex-1 flex flex-col h-full bg-background border-r border-border
-                ${selectedChatId && !isDesktop ? 'hidden' : 'block'}
-                md:max-w-xs lg:max-w-sm
-            `}>
-                <div className="p-4 border-b border-border bg-card/50 backdrop-blur-sm">
-                    <h2 className="text-xl font-bold bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">
-                        Wiadomości
-                    </h2>
-                </div>
-                <div className="flex-1 overflow-y-auto p-2 scrollbar-hide">
-                    <ChatList
-                        onSelectChat={setSelectedChatId}
-                        selectedChatId={selectedChatId}
-                    />
-                </div>
+        <motion.button
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.99 }}
+            onClick={onClick}
+            className={cn(
+                "w-full flex items-center gap-3 p-4 transition-all rounded-xl text-left",
+                isActive
+                    ? "bg-violet-500/20 border border-violet-500/30"
+                    : "hover:bg-white/5 border border-transparent"
+            )}
+        >
+            {/* Avatar */}
+            <div className={cn(
+                "w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0",
+                isActive
+                    ? "bg-gradient-to-br from-violet-500 to-indigo-500 text-white"
+                    : "bg-slate-800 text-white/70"
+            )}>
+                {initial}
             </div>
 
-            {/* Chat Window Area */}
-            <div className={`
-                flex-[2] h-full bg-slate-950/50 relative
-                ${!selectedChatId && !isDesktop ? 'hidden' : 'block'}
-            `}>
-                {selectedChatId ? (
-                    // We need to fetch chat details or pass them differently. 
-                    // For now, simpler integration: ChatWindow fetches its own data or we just pass ID.
-                    // IMPORTANT: The existing ChatWindow takes proId etc props. 
-                    // We might need to refactor ChatWindow to accept chatId OR fetch by itself.
-                    // For this MVP step, we will use a Wrapper or modify ChatWindow.
-                    // Let's assume ChatWindow can handle being mounted with an ID.
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                    <h4 className={cn(
+                        "font-semibold truncate",
+                        unreadCount > 0 ? "text-white" : "text-slate-200"
+                    )}>
+                        {otherName}
+                    </h4>
+                    <span className="text-xs text-slate-500 flex-shrink-0">
+                        {formatTimeAgo(chat.lastMessageAt)}
+                    </span>
+                </div>
 
-                    // Since ChatWindow props are strict (proId, proName...), we need to fetch the chat details here
-                    // safely before rendering ChatWindow, OR update ChatWindow to handle "Chat Mode".
-
-                    <ChatWindowWrapper
-                        chatId={selectedChatId}
-                        onClose={() => setSelectedChatId(null)}
-                    />
-                ) : (
-                    <div className="hidden md:flex flex-col items-center justify-center h-full text-muted-foreground p-8 text-center">
-                        <div className="w-64 h-64 bg-slate-900/50 rounded-full flex items-center justify-center mb-6 border border-white/5">
-                            <img src="/assets/illustrations/empty-chat.svg" alt="Select chat" className="w-32 h-32 opacity-20" />
-                        </div>
-                        <h3 className="text-xl font-semibold mb-2">Wybierz konwersację</h3>
-                        <p>Wybierz czat z listy po lewej stronie, aby kontynuować rozmowę.</p>
-                    </div>
+                {chat.jobTitle && (
+                    <p className="text-xs text-violet-400 truncate mb-0.5">
+                        {chat.jobTitle}
+                    </p>
                 )}
+
+                <div className="flex items-center justify-between gap-2">
+                    <p className={cn(
+                        "text-sm truncate",
+                        unreadCount > 0 ? "text-slate-300 font-medium" : "text-slate-500"
+                    )}>
+                        {chat.lastMessage || 'Brak wiadomości'}
+                    </p>
+
+                    {unreadCount > 0 && (
+                        <span className="w-5 h-5 rounded-full bg-violet-500 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+                            {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                    )}
+                </div>
             </div>
+        </motion.button>
+    );
+}
+
+// Empty State Component
+function EmptyState() {
+    return (
+        <div className="flex flex-col items-center justify-center h-full text-slate-500 p-8">
+            <div className="w-24 h-24 rounded-full bg-slate-800/50 flex items-center justify-center mb-4">
+                <MessageSquare className="w-10 h-10 text-slate-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">
+                Wybierz konwersację
+            </h3>
+            <p className="text-sm text-center">
+                Wybierz czat z listy po lewej stronie, aby kontynuować rozmowę.
+            </p>
         </div>
     );
 }
 
-// Temporary Wrapper to bridge ChatList selection with ChatWindow props
-// In a real refactor, ChatWindow should probably just take `chatId` and fetch the rest.
-import { doc, getDoc, Firestore } from "firebase/firestore";
-import { db } from "@/lib/firebase"; // Make sure to import properly
+// No Chats State
+function NoChatsState() {
+    return (
+        <div className="flex flex-col items-center justify-center h-64 text-slate-500 p-4">
+            <MessageSquare className="w-12 h-12 mb-3 opacity-30" />
+            <p className="text-sm font-medium">Brak wiadomości</p>
+            <p className="text-xs mt-1 text-center">
+                Twoje konwersacje ze zleceniami pojawią się tutaj.
+            </p>
+        </div>
+    );
+}
 
-function ChatWindowWrapper({ chatId, onClose }: { chatId: string, onClose: () => void }) {
-    const [chatData, setChatData] = useState<ChatRoom | null>(null);
+export function MessagesTab() {
     const { user, userRole } = useAuth();
+    const [chats, setChats] = useState<Chat[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+    const [isMobileView, setIsMobileView] = useState(false);
 
+    // Check for mobile view
     useEffect(() => {
-        const fetchChat = async () => {
-            if (!db) return;
-            const snap = await getDoc(doc(db as Firestore, "chats", chatId));
-            if (snap.exists()) {
-                setChatData({ id: snap.id, ...snap.data() } as ChatRoom);
-            }
-        };
-        fetchChat();
-    }, [chatId]);
+        const checkMobile = () => setIsMobileView(window.innerWidth < 768);
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
 
-    if (!chatData || !user) return <div className="h-full flex items-center justify-center">Ładowanie...</div>;
+    // Subscribe to user's chats
+    useEffect(() => {
+        if (!user) {
+            setLoading(false);
+            return;
+        }
 
-    const otherId = userRole === 'client' ? chatData.professionalId : chatData.clientId;
-    const otherName = userRole === 'client' ? chatData.professionalName : chatData.clientName;
-    const otherImage = (userRole === 'client' ? chatData.professionalImageUrl : chatData.clientImageUrl) || '';
+        setLoading(true);
+        const unsubscribe = ChatService.subscribeToUserChats(user.uid, (updatedChats) => {
+            setChats(updatedChats);
+            setLoading(false);
+        });
+
+        return unsubscribe;
+    }, [user]);
+
+    // If mobile and chat selected, show only chat
+    if (isMobileView && selectedChatId) {
+        return (
+            <SimpleChatWindow
+                chatId={selectedChatId}
+                onClose={() => setSelectedChatId(null)}
+            />
+        );
+    }
 
     return (
-        <ChatWindow
-            proId={otherId} // ChatWindow expects proId. If we are Pro, this prop name is confusing but functional if used as "otherUserId"
-            proName={otherName}
-            proImage={otherImage}
-            onClose={onClose}
-        />
+        <div className="flex h-full w-full max-w-6xl mx-auto">
+            {/* Chat List */}
+            <div className={cn(
+                "flex flex-col h-full bg-slate-950 border-r border-white/10",
+                isMobileView ? "w-full" : "w-80 lg:w-96"
+            )}>
+                {/* Header */}
+                <div className="p-4 border-b border-white/10">
+                    <h2 className="text-xl font-bold bg-gradient-to-r from-violet-400 to-indigo-400 bg-clip-text text-transparent">
+                        Wiadomości
+                    </h2>
+                </div>
+
+                {/* Chat List */}
+                <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                    {loading ? (
+                        <div className="flex justify-center items-center h-64">
+                            <Loader2 className="w-8 h-8 text-violet-500 animate-spin" />
+                        </div>
+                    ) : chats.length === 0 ? (
+                        <NoChatsState />
+                    ) : (
+                        chats.map((chat) => (
+                            <ChatListItem
+                                key={chat.id}
+                                chat={chat}
+                                isActive={selectedChatId === chat.id}
+                                onClick={() => setSelectedChatId(chat.id)}
+                                userRole={userRole || 'client'}
+                            />
+                        ))
+                    )}
+                </div>
+            </div>
+
+            {/* Chat Window (Desktop) */}
+            {!isMobileView && (
+                <div className="flex-1 h-full">
+                    {selectedChatId ? (
+                        <SimpleChatWindow
+                            chatId={selectedChatId}
+                            onClose={() => setSelectedChatId(null)}
+                        />
+                    ) : (
+                        <EmptyState />
+                    )}
+                </div>
+            )}
+        </div>
     );
 }

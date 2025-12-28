@@ -56,10 +56,11 @@ export class JobService {
                 const initialChat = {
                     id: chatRef.id,
                     jobId: jobRef.id,          // Link to Job
+                    jobTitle: jobData.title,   // For display in messages tab
                     clientId,
                     clientName,
                     participantIds: [clientId], // Initially only client
-                    status: 'active',           // Active for AI/System messages
+                    status: 'open',             // Active for AI/System messages
                     isActive: true,
                     lastMessage: 'Zlecenie utworzone. Oczekiwanie na oferty.',
                     lastMessageAt: now,

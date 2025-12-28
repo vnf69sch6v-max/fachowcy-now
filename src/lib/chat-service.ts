@@ -1,7 +1,6 @@
 import { db } from "./firebase";
 import {
     collection,
-    addDoc,
     query,
     orderBy,
     onSnapshot,
@@ -11,57 +10,61 @@ import {
     where,
     doc,
     updateDoc,
-    setDoc,
-    getDoc,
-    increment
+    increment,
+    writeBatch
 } from "firebase/firestore";
-import { ChatRoom, ChatStatus, ChatMessage } from "@/types/chat";
 
-export type MessageType = 'text' | 'system' | 'image';
+// ===========================================
+// TYPES
+// ===========================================
 
-// Legacy Message interface kept for backward compatibility if needed, 
-// but we should migrate provided code to use types/chat.ts
-export interface Message {
+export interface Chat {
     id: string;
-    text?: string;
-    content?: string; // New field
-    senderId: string;
-    type?: MessageType;
+    jobId?: string;
+    jobTitle?: string;
+    clientId: string;
+    clientName: string;
+    professionalId?: string;
+    professionalName?: string;
+    participantIds: string[];
+    lastMessage: string;
+    lastMessageAt: any;
+    unreadCount: {
+        client: number;
+        professional: number;
+    };
+    status: 'open' | 'negotiating' | 'accepted' | 'completed';
     createdAt: any;
 }
 
-export const ChatService = {
-    // Generate deterministic Chat ID
-    getChatId: (uid1: string, uid2: string) => {
-        const sorted = [uid1, uid2].sort();
-        return `chat_${sorted[0]}_${sorted[1]}`;
-    },
+export interface Message {
+    id: string;
+    content: string;
+    senderId: string;
+    senderName: string;
+    senderRole: 'client' | 'professional' | 'system';
+    type: 'text' | 'proposal' | 'system';
+    createdAt: any;
+    proposalData?: {
+        price: number;
+        message: string;
+        providerId: string;
+    };
+}
 
-    // Subscribe to real-time messages for a specific conversation
-    subscribeToChat: (chatId: string, callback: (messages: Message[]) => void) => {
+// ===========================================
+// SIMPLIFIED CHAT SERVICE
+// ===========================================
+
+export const ChatService = {
+    /**
+     * Subscribe to user's chat list (real-time)
+     */
+    subscribeToUserChats: (userId: string, callback: (chats: Chat[]) => void) => {
         if (!db) {
             callback([]);
             return () => { };
         }
-
-        const q = query(
-            collection(db as Firestore, "chats", chatId, "messages"),
-            orderBy("createdAt", "asc"),
-            limit(50)
-        );
-
-        return onSnapshot(q, (snapshot) => {
-            const messages = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            } as Message));
-            callback(messages);
-        });
-    },
-
-    // Get all chats for a user (ordered by last message)
-    getChatsForUser: (userId: string, callback: (chats: ChatRoom[]) => void) => {
-        if (!db) return () => { };
 
         const q = query(
             collection(db as Firestore, "chats"),
@@ -74,143 +77,116 @@ export const ChatService = {
             const chats = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
-            } as ChatRoom));
+            } as Chat));
             callback(chats);
+        }, (error) => {
+            console.error("Error fetching chats:", error);
+            callback([]);
         });
     },
 
-    // Mark messages in a chat as read for a specific user
-    markAsRead: async (chatId: string, userId: string, userRole: 'client' | 'professional') => {
+    /**
+     * Subscribe to messages in a specific chat (real-time)
+     */
+    subscribeToMessages: (chatId: string, callback: (messages: Message[]) => void) => {
+        if (!db) {
+            callback([]);
+            return () => { };
+        }
+
+        const q = query(
+            collection(db as Firestore, `chats/${chatId}/messages`),
+            orderBy("createdAt", "asc"),
+            limit(100)
+        );
+
+        return onSnapshot(q, (snapshot) => {
+            const messages = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            } as Message));
+            callback(messages);
+        }, (error) => {
+            console.error("Error fetching messages:", error);
+            callback([]);
+        });
+    },
+
+    /**
+     * Send a message to a chat
+     */
+    sendMessage: async (
+        chatId: string,
+        message: {
+            content: string;
+            senderId: string;
+            senderName: string;
+            senderRole: 'client' | 'professional';
+        }
+    ) => {
         if (!db) return;
 
         try {
-            const chatRef = doc(db as Firestore, "chats", chatId);
+            const batch = writeBatch(db as Firestore);
+            const msgRef = doc(collection(db as Firestore, `chats/${chatId}/messages`));
 
-            // Reset unread count for this user
-            const updateField = userRole === 'client' ? 'unreadCount.client' : 'unreadCount.professional';
-
-            await updateDoc(chatRef, {
-                [updateField]: 0
+            // Add message
+            batch.set(msgRef, {
+                id: msgRef.id,
+                content: message.content,
+                senderId: message.senderId,
+                senderName: message.senderName,
+                senderRole: message.senderRole,
+                type: 'text',
+                createdAt: serverTimestamp()
             });
+
+            // Update chat metadata
+            const otherRole = message.senderRole === 'client' ? 'professional' : 'client';
+            batch.update(doc(db as Firestore, 'chats', chatId), {
+                lastMessage: message.content.substring(0, 100),
+                lastMessageAt: serverTimestamp(),
+                [`unreadCount.${otherRole}`]: increment(1)
+            });
+
+            await batch.commit();
+            return msgRef.id;
         } catch (error) {
-            console.error("Error marking chat as read:", error);
-        }
-    },
-
-    // Create a new chat or returning existing one
-    createChat: async (clientId: string, professionalId: string, clientName: string, proName: string, bookingId?: string) => {
-        if (!db) return null;
-
-        const chatId = ChatService.getChatId(clientId, professionalId);
-        const chatRef = doc(db as Firestore, "chats", chatId);
-
-        try {
-            const chatDoc = await getDoc(chatRef);
-
-            if (chatDoc.exists()) {
-                return chatId;
-            }
-
-            // Create new chat
-            const newChat: Partial<ChatRoom> = {
-                id: chatId,
-                clientId,
-                clientName,
-                professionalId,
-                professionalName: proName,
-                participantIds: [clientId, professionalId],
-                status: 'inquiry',
-                createdAt: serverTimestamp() as any,
-                updatedAt: serverTimestamp() as any,
-                unreadCount: { client: 0, professional: 0 },
-                isActive: true
-            };
-
-            if (bookingId) {
-                newChat.bookingId = bookingId;
-            }
-
-            await setDoc(chatRef, newChat);
-            return chatId;
-        } catch (error) {
-            console.error("Error creating chat:", error);
+            console.error("Error sending message:", error);
             return null;
         }
     },
 
-    // Update chat status (e.g. from Deal Widget)
-    updateChatStatus: async (chatId: string, status: ChatStatus, extraData?: { date?: Date, amount?: number }) => {
+    /**
+     * Mark chat as read for a specific role
+     */
+    markAsRead: async (chatId: string, role: 'client' | 'professional') => {
         if (!db) return;
 
         try {
-            const chatRef = doc(db as Firestore, "chats", chatId);
-            const update: any = {
-                status,
-                updatedAt: serverTimestamp()
-            };
-
-            if (extraData?.date) update.scheduledDate = extraData.date;
-            if (extraData?.amount) update.quotedAmount = extraData.amount;
-
-            await updateDoc(chatRef, update);
+            await updateDoc(doc(db as Firestore, 'chats', chatId), {
+                [`unreadCount.${role}`]: 0
+            });
         } catch (error) {
-            console.error("Error updating chat status:", error);
+            console.error("Error marking as read:", error);
         }
     },
 
-    // Send a system message (e.g. "Offer accepted")
-    sendSystemMessage: async (chatId: string, text: string) => {
-        if (!db) return;
-
-        try {
-            await addDoc(collection(db as Firestore, "chats", chatId, "messages"), {
-                text,
-                senderId: 'system',
-                senderRole: 'system',
-                type: 'system',
-                createdAt: serverTimestamp(),
-                isSystemMessage: true
-            });
-
-            // Update last message
-            await updateDoc(doc(db as Firestore, "chats", chatId), {
-                lastMessage: text,
-                lastMessageAt: serverTimestamp()
-            });
-
-        } catch (error) {
-            console.error("Error sending system message:", error);
+    /**
+     * Get chat metadata (one-time fetch)
+     */
+    getChatById: (chatId: string, callback: (chat: Chat | null) => void) => {
+        if (!db) {
+            callback(null);
+            return () => { };
         }
-    },
 
-    // Send a message (Updated to match new types)
-    sendMessage: async (chatId: string, text: string, senderId: string, senderRole: 'client' | 'professional', type: MessageType = 'text') => {
-        if (!db) return;
-
-        try {
-            // 1. Add message
-            await addDoc(collection(db as Firestore, "chats", chatId, "messages"), {
-                content: text, // Using content instead of text to match ChatMessage type
-                senderId,
-                senderRole,
-                type,
-                createdAt: serverTimestamp()
-            });
-
-            // 2. Update parent chat doc
-            const chatRef = doc(db as Firestore, "chats", chatId);
-
-            // Increment unread count for the OTHER party
-            const incrementField = senderRole === 'client' ? 'unreadCount.professional' : 'unreadCount.client';
-
-            await updateDoc(chatRef, {
-                lastMessage: text,
-                lastMessageAt: serverTimestamp(),
-                [incrementField]: increment(1)
-            });
-
-        } catch (error) {
-            console.error("Error sending message:", error);
-        }
+        return onSnapshot(doc(db as Firestore, 'chats', chatId), (snapshot) => {
+            if (snapshot.exists()) {
+                callback({ id: snapshot.id, ...snapshot.data() } as Chat);
+            } else {
+                callback(null);
+            }
+        });
     }
 };
