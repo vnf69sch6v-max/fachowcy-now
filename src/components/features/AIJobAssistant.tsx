@@ -1128,6 +1128,37 @@ export function AIJobAssistant({ isOpen, onClose, onJobCreated, onViewProOnMap, 
                         <div ref={messagesEndRef} />
                     </div>
 
+
+                    {/* Live Summary Panel - Updates reactively with AI actions */}
+                    {draft.aiResult && state !== 'greeting' && state !== 'awaiting_description' && (
+                        <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="mx-5 mb-2 p-4 bg-gradient-to-r from-emerald-500/10 to-green-500/10 border border-emerald-500/30 rounded-xl"
+                        >
+                            <div className="flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-2">
+                                    <CheckCircle className="w-4 h-4 text-emerald-400" />
+                                    <span className="text-slate-300 font-medium">{draft.aiResult.category}</span>
+                                </div>
+                                <motion.span
+                                    key={`${draft.aiResult.priceMin}-${draft.aiResult.priceMax}`}
+                                    initial={{ scale: 1.2, color: '#34d399' }}
+                                    animate={{ scale: 1, color: '#6ee7b7' }}
+                                    className="text-emerald-400 font-bold"
+                                >
+                                    💰 {draft.aiResult.priceMin}-{draft.aiResult.priceMax} zł
+                                </motion.span>
+                            </div>
+                            {draft.location && (
+                                <div className="flex items-center gap-2 mt-2 text-xs text-slate-400">
+                                    <MapPin className="w-3 h-3" />
+                                    <span className="truncate">{draft.location.address}</span>
+                                </div>
+                            )}
+                        </motion.div>
+                    )}
+
                     {/* Input - Fixed at bottom */}
                     <div className="p-5 border-t border-white/10 bg-gradient-to-t from-slate-950 to-slate-900/50">
                         <div className="flex items-center gap-3">
