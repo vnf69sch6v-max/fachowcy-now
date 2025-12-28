@@ -69,7 +69,6 @@ export const ChatService = {
         const q = query(
             collection(db as Firestore, "chats"),
             where("participantIds", "array-contains", userId),
-            orderBy("lastMessageAt", "desc"),
             limit(50)
         );
 
